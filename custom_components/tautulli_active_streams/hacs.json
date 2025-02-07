@@ -1,0 +1,15 @@
+{
+  "domain": "tautulli_activity",
+  "name": "Tautulli Activity",
+  "homeassistant": "2023.1.0",
+  "render_readme": true,
+  "country": "ALL",
+  "documentation": "https://github.com/Richardvaio/Tautulli_activity",
+  "issue_tracker": "https://github.com/Richardvaio/Tautulli_activity/issues",
+  "requirements": ["pytautulli==23.1.1"],
+  "codeowners": ["@Richardvaio"],
+  "iot_class": "local_polling",
+  "dependencies": [],
+  "config_flow": true,
+  "version": "2.0.0"
+}
