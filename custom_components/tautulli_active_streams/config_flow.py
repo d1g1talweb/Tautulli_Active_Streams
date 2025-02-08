@@ -1,9 +1,8 @@
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_API_KEY, CONF_SCAN_INTERVAL
+from homeassistant.const import CONF_API_KEY, CONF_URL, CONF_VERIFY_SSL, CONF_SCAN_INTERVAL
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-
 from .const import DOMAIN, DEFAULT_SCAN_INTERVAL, DEFAULT_SESSION_COUNT
 from .api import TautulliAPI
 
@@ -13,15 +12,16 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def _show_setup_form(self, errors=None):
+    async def _show_setup_form(self, errors=None, user_input=None):
         """Show the setup form to the user."""
-        
+        user_input = user_input or {}
+
         data_schema = vol.Schema({
-            vol.Required(CONF_HOST): str,
-            vol.Required(CONF_PORT, default=8181): int,
-            vol.Required(CONF_API_KEY): str,
-            vol.Required(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): int,
-            vol.Required("num_sensors", default=DEFAULT_SESSION_COUNT): int,
+            vol.Required(CONF_URL, default=user_input.get(CONF_URL, "")): str, 
+            vol.Required(CONF_API_KEY, default=user_input.get(CONF_API_KEY, "")): str,
+            vol.Optional(CONF_VERIFY_SSL, default=user_input.get(CONF_VERIFY_SSL, True)): bool, 
+            vol.Required(CONF_SCAN_INTERVAL, default=user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): int,
+            vol.Required("num_sensors", default=user_input.get("num_sensors", DEFAULT_SESSION_COUNT)): int,
         })
 
         return self.async_show_form(
@@ -35,29 +35,35 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            existing_entry = self._async_abort_entries_match(
-                {CONF_HOST: user_input[CONF_HOST], CONF_PORT: user_input[CONF_PORT]}
-            )
+           
+            existing_entry = self._async_abort_entries_match({CONF_URL: user_input[CONF_URL]})
             if existing_entry:
                 return self.async_abort(reason="already_configured")
 
-            session = async_get_clientsession(self.hass)
-            api = TautulliAPI(user_input[CONF_HOST], user_input[CONF_PORT], user_input[CONF_API_KEY], session)
+         
+            url = user_input[CONF_URL].strip()
+            verify_ssl = user_input.get(CONF_VERIFY_SSL, True)
 
+           
+            session = async_get_clientsession(self.hass, verify_ssl)
+            api = TautulliAPI(url, user_input[CONF_API_KEY], session, verify_ssl)
+
+         
             try:
                 response = await api.get_activity()
                 if not response:
                     raise ValueError("Invalid API response")
             except Exception:
                 errors["base"] = "cannot_connect"
-                return await self._show_setup_form(errors)
+                return await self._show_setup_form(errors, user_input)
 
+          
             return self.async_create_entry(
                 title="Tautulli Active Streams",
                 data={
-                    CONF_HOST: user_input[CONF_HOST],
-                    CONF_PORT: user_input[CONF_PORT],
+                    CONF_URL: url,  
                     CONF_API_KEY: user_input[CONF_API_KEY],
+                    CONF_VERIFY_SSL: verify_ssl,
                 },
                 options={
                     CONF_SCAN_INTERVAL: user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
@@ -88,14 +94,8 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         options_schema = vol.Schema({
-            vol.Required(
-                CONF_SCAN_INTERVAL,
-                default=self.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-            ): int,
-            vol.Required(
-                "num_sensors",
-                default=self.options.get("num_sensors", DEFAULT_SESSION_COUNT)
-            ): int,
+            vol.Required(CONF_SCAN_INTERVAL, default=self.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): int,
+            vol.Required("num_sensors", default=self.options.get("num_sensors", DEFAULT_SESSION_COUNT)): int,
         })
 
         return self.async_show_form(
