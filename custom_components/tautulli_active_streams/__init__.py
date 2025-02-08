@@ -7,7 +7,7 @@ from homeassistant.const import CONF_URL, CONF_API_KEY, CONF_SCAN_INTERVAL, CONF
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import DOMAIN, DEFAULT_SCAN_INTERVAL
-from .api import TautulliAPI  # ✅ Import Updated API
+from .api import TautulliAPI 
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,12 +17,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tautulli Active Streams integration."""
     hass.data.setdefault(DOMAIN, {})
 
-    # ✅ Retrieve settings from config
     url = entry.data[CONF_URL]
     api_key = entry.data[CONF_API_KEY]
-    verify_ssl = entry.data.get(CONF_VERIFY_SSL, True)  # ✅ Get SSL verification option
+    verify_ssl = entry.data.get(CONF_VERIFY_SSL, True) 
 
-    session = async_get_clientsession(hass, verify_ssl)  # ✅ Apply SSL setting
+    session = async_get_clientsession(hass, verify_ssl)  
     api = TautulliAPI(url, api_key, session, verify_ssl)
 
     async def async_update_data():
@@ -33,8 +32,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
         except Exception:
             return {} 
-        
-        
         
     coordinator = DataUpdateCoordinator(
         hass,
@@ -63,7 +60,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)  # ✅ Remove only if successful
+        hass.data[DOMAIN].pop(entry.entry_id, None) 
 
     return unload_ok
 
