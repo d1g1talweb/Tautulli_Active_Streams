@@ -1,0 +1,32 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tautulli Active Streams",
+        "description": "Configure the connection to your Tautulli server.",
+        "data": {
+          "host": "Server hostname or IP address.",
+          "port": "Server Port (default: 8181).",
+          "api_key": "API key (found in the Tautulli settings).",
+          "scan_interval": "How often to check for active streams? (Default: 10 seconds).",
+          "num_sensors": "Number of sensors to create for monitoring active streams."
+        }
+      }
+    },
+    "options": {
+      "step": {
+        "init": {
+          "title": "Tautulli Active Streams Options",
+          "description": "Must RESTART Homeassistant.",
+          "data": {
+            "scan_interval": "How often should Home Assistant update the stream data?",
+            "num_sensors": "Set the maximum number of sensors to create."
+          }
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to Tautulli. Please check your settings."
+    }
+  }
+}

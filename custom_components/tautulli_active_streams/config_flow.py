@@ -7,6 +7,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .const import DOMAIN, DEFAULT_SCAN_INTERVAL, DEFAULT_SESSION_COUNT
 from .api import TautulliAPI
 
+
 class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handles the configuration flow for Tautulli Active Streams."""
 
@@ -14,18 +15,19 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _show_setup_form(self, errors=None):
         """Show the setup form to the user."""
+        
         data_schema = vol.Schema({
             vol.Required(CONF_HOST): str,
             vol.Required(CONF_PORT, default=8181): int,
             vol.Required(CONF_API_KEY): str,
             vol.Required(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): int,
-            vol.Required("num_sensors", default=DEFAULT_SESSION_COUNT): int,  # ✅ Allow setting sensor count
-
-            
+            vol.Required("num_sensors", default=DEFAULT_SESSION_COUNT): int,
         })
 
         return self.async_show_form(
-            step_id="user", data_schema=data_schema, errors=errors or {}
+            step_id="user",
+            data_schema=data_schema,
+            errors=errors or {}
         )
 
     async def async_step_user(self, user_input=None):
@@ -33,14 +35,12 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            # ✅ Prevent duplicate integrations for the same host/port
             existing_entry = self._async_abort_entries_match(
                 {CONF_HOST: user_input[CONF_HOST], CONF_PORT: user_input[CONF_PORT]}
             )
             if existing_entry:
                 return self.async_abort(reason="already_configured")
 
-            # ✅ Validate API connection before creating the entry
             session = async_get_clientsession(self.hass)
             api = TautulliAPI(user_input[CONF_HOST], user_input[CONF_PORT], user_input[CONF_API_KEY], session)
 
@@ -80,11 +80,11 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry):
         """Initialize options flow."""
         self.config_entry = config_entry
-        self.options = dict(config_entry.options)  # ✅ Correctly initialize options
-
-
+        self.options = dict(config_entry.options)
+        
+        
     async def async_step_init(self, user_input=None):
-        """Manage the options."""
+        """Manage the options (Configure menu)."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
@@ -93,4 +93,10 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Required("num_sensors", default=self.options.get("num_sensors", DEFAULT_SESSION_COUNT)): int,
         })
 
-        return self.async_show_form(step_id="init", data_schema=options_schema)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=options_schema,
+            errors={},
+        )
+        
+        
