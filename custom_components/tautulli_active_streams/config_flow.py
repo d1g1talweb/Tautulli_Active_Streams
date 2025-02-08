@@ -81,22 +81,24 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
         """Initialize options flow."""
         self.config_entry = config_entry
         self.options = dict(config_entry.options)
-        
-        
+
     async def async_step_init(self, user_input=None):
         """Manage the options (Configure menu)."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
         options_schema = vol.Schema({
-            vol.Required(CONF_SCAN_INTERVAL, default=self.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): int,
-            vol.Required("num_sensors", default=self.options.get("num_sensors", DEFAULT_SESSION_COUNT)): int,
+            vol.Required(
+                CONF_SCAN_INTERVAL,
+                default=self.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+            ): int,
+            vol.Required(
+                "num_sensors",
+                default=self.options.get("num_sensors", DEFAULT_SESSION_COUNT)
+            ): int,
         })
 
         return self.async_show_form(
             step_id="init",
-            data_schema=options_schema,
-            errors={},
+            data_schema=options_schema
         )
-        
-        
