@@ -25,10 +25,10 @@ A custom integration for Home Assistant that allows you to monitor active Plex s
 
 ## **:inbox_tray: Installation**
 
-:one: Install via [HACS](https://hacs.xyz/) or manually from GitHub.
-:two: Add the integration in **Home Assistant → Settings → Devices & Services**.
-:three: Enter your **Tautulli details (Url, API Key) Set Sensor Refresh and Count**.
-:four: Display real-time stream data in **Lovelace cards!**
+ * Install via [HACS](https://hacs.xyz/) or manually from GitHub.
+ * Add the integration in **Home Assistant → Settings → Devices & Services**.
+ * Enter your **Tautulli details (Url, API Key) Set Sensor Refresh and Count**.
+ * Display real-time stream data in **Lovelace cards!**
 
 ---
 
