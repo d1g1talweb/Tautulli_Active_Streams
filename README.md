@@ -285,4 +285,6 @@ v2.0.1 - (08.02.2025)
 - Improved logging & error handling for better troubleshooting.
 - Now respects X-Forwarded-Proto headers for proxy setups.
 
-Update via HACS or GitHub & restart Home Assistant!
+---
+
+---
