@@ -7,7 +7,7 @@ from homeassistant.const import CONF_URL, CONF_API_KEY, CONF_SCAN_INTERVAL, CONF
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import DOMAIN, DEFAULT_SCAN_INTERVAL
-from .api import TautulliAPI 
+from .api import TautulliAPI  # ✅ Import Updated API
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,26 +17,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tautulli Active Streams integration."""
     hass.data.setdefault(DOMAIN, {})
 
-  
+    # ✅ Retrieve settings from config
     url = entry.data[CONF_URL]
     api_key = entry.data[CONF_API_KEY]
-    verify_ssl = entry.data.get(CONF_VERIFY_SSL, True) 
+    verify_ssl = entry.data.get(CONF_VERIFY_SSL, True)  # ✅ Get SSL verification option
 
-    session = async_get_clientsession(hass, verify_ssl)  
+    session = async_get_clientsession(hass, verify_ssl)  # ✅ Apply SSL setting
     api = TautulliAPI(url, api_key, session, verify_ssl)
 
     async def async_update_data():
-        """Fetch data from Tautulli API."""
+        """Fetch data from Tautulli API (Silently ignore failures)."""
         try:
             data = await api.get_activity()
-            if not data:
-                _LOGGER.error("❌ No data received from Tautulli API!")
-                return {}
-            return data
-        except Exception as err:
-            _LOGGER.error(f"⚠️ API request failed: {err}")
+            return data if data else {}
+    
+        except Exception:
             return {} 
-
+        
+        
+        
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
@@ -49,10 +48,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     try:
-        
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    except Exception as err:
-        _LOGGER.error(f"❌ Failed to set up sensors: {err}")
+    except Exception:
         return False 
 
     entry.async_on_unload(entry.add_update_listener(async_update_options))
@@ -61,20 +58,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Handle unloading of the integration."""
     if DOMAIN not in hass.data or entry.entry_id not in hass.data[DOMAIN]:
-        _LOGGER.warning(f"⚠️ Attempted to unload non-existent entry {entry.entry_id}")
-        return False 
-
+        return False
+        
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None) 
+        hass.data[DOMAIN].pop(entry.entry_id, None)  # ✅ Remove only if successful
 
     return unload_ok
 
-async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):
-    """Handle options update and ensure sensors reload properly."""
-    _LOGGER.debug("🔄 Reloading Tautulli Active Streams integration due to options update")
 
+async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):
+    """Handle options update (Silently)."""
     unload_success = await async_unload_entry(hass, entry)
 
     if unload_success:
