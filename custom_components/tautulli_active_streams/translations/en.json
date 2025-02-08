@@ -12,21 +12,21 @@
           "num_sensors": "Number of sensors to create for monitoring active streams."
         }
       }
-    },
-    "options": {
-      "step": {
-        "init": {
-          "title": "Tautulli Active Streams Options",
-          "description": "Must RESTART Homeassistant.",
-          "data": {
-            "scan_interval": "How often should Home Assistant update the stream data?",
-            "num_sensors": "Set the maximum number of sensors to create."
-          }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tautulli Active Streams Options",
+        "description": "Restart required for changes to take effect.",
+        "data": {
+          "scan_interval": "How often should Home Assistant update the stream data? (in seconds).",
+          "num_sensors": "Set the maximum number of sensors to create for monitoring streams."
         }
       }
-    },
-    "error": {
-      "cannot_connect": "Unable to connect to Tautulli. Please check your settings."
     }
+  },
+  "error": {
+    "cannot_connect": "Unable to connect to Tautulli. Please check your settings."
   }
 }
