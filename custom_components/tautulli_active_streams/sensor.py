@@ -1,9 +1,9 @@
 import logging
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.const import STATE_OFF, CONF_HOST, CONF_PORT, CONF_API_KEY  # ✅ Import constants
+from homeassistant.const import STATE_OFF, CONF_URL, CONF_API_KEY, CONF_VERIFY_SSL
 
-from .const import DOMAIN, DEFAULT_SESSION_COUNT  # ✅ Import DEFAULT_SESSION_COUNT
+from .const import DOMAIN, DEFAULT_SESSION_COUNT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     num_sensors = entry.options.get("num_sensors", DEFAULT_SESSION_COUNT)
 
     entities = [TautulliStreamSensor(coordinator, entry, i) for i in range(num_sensors)]
-    async_add_entities(entities, True)  # ✅ Ensure async_add_entities gets called properly
+    async_add_entities(entities, True)
 
 
 class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
@@ -29,7 +29,6 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = f"Plex Session {index + 1} (Tautulli)"
         self._attr_icon = "mdi:plex"
 
-        # ✅ Ensure entity is linked to a device
         self._attr_device_info = self.device_info
 
     @property
@@ -42,29 +41,24 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        """Return extra attributes for the sensor, including image URL."""
+        """Return extra attributes for the sensor, including a cleaned-up image URL."""
         sessions = self.coordinator.data.get("sessions", [])
         if len(sessions) > self._index:
             session = sessions[self._index]
 
-            # ✅ Retrieve API key, host, and port from the config entry
+            base_url = self._entry.data.get(CONF_URL)
             api_key = self._entry.data.get(CONF_API_KEY)
-            host = self._entry.data.get(CONF_HOST)
-            port = self._entry.data.get(CONF_PORT)
 
-            # ✅ Ensure all necessary values are available
-            if not api_key or not host or not port:
+            if not api_key or not base_url:
                 return {}
 
-            # ✅ Construct the Tautulli URL dynamically
-            tautulli_url = f"http://{host}:{port}/api/v2?apikey={api_key}&cmd=pms_image_proxy&img="
-
-            # ✅ Select the correct image
             image_url = None
             if session.get("grandparent_thumb"):
-                image_url = f"{tautulli_url}{session.get('grandparent_thumb')}&width=300&height=450&fallback=poster&refresh=true"
+                image_url = f"{base_url}/api/v2?apikey={api_key}&cmd=pms_image_proxy&img={session.get('grandparent_thumb')}&width=300&height=450&fallback=poster&refresh=true"
             elif session.get("thumb"):
-                image_url = f"{tautulli_url}{session.get('thumb')}&width=300&height=450&fallback=poster&refresh=true"
+                image_url = f"{base_url}/api/v2?apikey={api_key}&cmd=pms_image_proxy&img={session.get('thumb')}&width=300&height=450&fallback=poster&refresh=true"
+
+
 
             return {
                 "user": session.get("user"),
@@ -73,7 +67,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                 "full_title": session.get("full_title"),
                 "grandparent_thumb": session.get("grandparent_thumb"),
                 "thumb": session.get("thumb"),
-                "image_url": image_url,  # ✅ New key added
+                "image_url": image_url,  
                 "parent_media_index": session.get("parent_media_index"),
                 "media_index": session.get("media_index"),
                 "year": session.get("year"),
@@ -90,9 +84,6 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                 "video_resolution": session.get("video_resolution"),
                 "stream_video_resolution": session.get("stream_video_resolution"),
                 "transcode_decision": session.get("transcode_decision"),
-                "tautulli_api_key": api_key,  # ✅ API key stored securely
-                "tautulli_host": host,  # ✅ Host stored securely
-                "tautulli_port": port,  # ✅ Port stored securely
             }
         return {}
 
