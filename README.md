@@ -271,19 +271,6 @@ Want to improve this integration? Feel free to submit a PR or open an issue on G
 ## 📜 License
 This project is licensed under the MIT License.
 
----
-
-
-Changelog - Tautulli Active Streams
-
-v2.0.1 - (08.02.2025)
-- Switched to full URL input instead of separate host/port.
-- Added SSL verification option for self-signed certificates.
-- Improved reverse proxy support with proper URL handling.
-- Fixed image proxy URLs to remove API key exposure.
-- Optimized sensor updates & reload handling.
-- Improved logging & error handling for better troubleshooting.
-- Now respects X-Forwarded-Proto headers for proxy setups.
 
 ---
 
