@@ -14,36 +14,30 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["sensor"]
 
-# Use the default session count from your constants.
+ 
 DEFAULT_SESSION_SENSORS = DEFAULT_SESSION_COUNT
 
 async def async_remove_extra_session_sensors(hass: HomeAssistant, entry: ConfigEntry):
     """Remove extra session sensor entities that exceed the new configuration."""
     registry = er.async_get(hass)
-    # Retrieve the new sensor count from options using the key "num_sensors".
+    
     session_sensor_count = entry.options.get("num_sensors", DEFAULT_SESSION_SENSORS)
     _LOGGER.debug("New num_sensors option is: %s", session_sensor_count)
     
-    # Get all entities associated with this config entry.
     entries = er.async_entries_for_config_entry(registry, entry.entry_id)
     
     for ent in entries:
-        # Look for sensor entities whose unique ID follows the naming convention:
-        # "plex_session_<number>_tautulli"
         if (ent.domain == "sensor" and 
             ent.unique_id.startswith("plex_session_") and 
             ent.unique_id.endswith("_tautulli")):
             try:
-                # Extract the number part.
-                # For "plex_session_1_tautulli", remove "plex_session_" (length 13)
-                # and "_tautulli" (length 9) to get "1".
+       
                 number_str = ent.unique_id[len("plex_session_"):-len("_tautulli")]
                 sensor_number = int(number_str)
             except ValueError:
                 _LOGGER.debug("Unable to parse sensor number from unique_id: %s", ent.unique_id)
                 continue
             
-            # Sensors are numbered starting at 1. Remove any sensor whose number is greater than the new count.
             if sensor_number > session_sensor_count:
                 _LOGGER.debug("Removing extra sensor entity: %s (sensor number: %s)", ent.entity_id, sensor_number)
                 registry.async_remove(ent.entity_id)
@@ -76,7 +70,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     await coordinator.async_config_entry_first_refresh()
-    # Store the current sensor count for later comparison.
     coordinator.sensor_count = entry.options.get("num_sensors", DEFAULT_SESSION_SENSORS)
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
@@ -85,7 +78,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception:
         return False
 
-    # Register the options update listener.
     entry.async_on_unload(entry.add_update_listener(async_update_options))
     return True
 
@@ -111,10 +103,10 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):
             "Increased sensor count detected (old: %s, new: %s); reloading integration to add new sensors.",
             coordinator.sensor_count, new_sensor_count
         )
-        # For increased sensor count, a full reload is needed so that new entities are created.
+
         await hass.config_entries.async_reload(entry.entry_id)
     else:
-        # For a decrease (or same count), remove extra sensors and refresh in place.
+        
         await async_remove_extra_session_sensors(hass, entry)
         coordinator.update_interval = timedelta(
             seconds=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
