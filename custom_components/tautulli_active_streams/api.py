@@ -13,8 +13,6 @@ class TautulliAPI:
         self._api_key = api_key
         self._session = session
         self._verify_ssl = verify_ssl 
-
-      
         self._base_url = f"{self._url}/api/v2"
 
     async def get_activity(self):
@@ -26,7 +24,7 @@ class TautulliAPI:
 
             async with self._session.get(url, timeout=10, ssl=self._verify_ssl) as response:
                 if response.status != 200:
-                    _LOGGER.error("❌ API request failed! Status: %s | Response: %s", response.status, await response.text())
+                    _LOGGER.warning("❌ API request failed! Status: %s | Response: %s", response.status, await response.text())
                     return None
                 
                 try:
@@ -37,9 +35,5 @@ class TautulliAPI:
                 
                 return data.get("response", {}).get("data", {})
 
-        except asyncio.TimeoutError:
-            _LOGGER.error("⏳ Tautulli API request timed out!")
-            return None
-        except aiohttp.ClientError as err:
-            _LOGGER.error("🚨 API request failed: %s", err)
-            return None
+        except (asyncio.TimeoutError, aiohttp.ClientError):
+            return None  
