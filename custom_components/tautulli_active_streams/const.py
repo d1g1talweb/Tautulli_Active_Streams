@@ -1,9 +1,11 @@
-import logging
-
-DOMAIN = "tautulli_active_streams"
-
-DEFAULT_SCAN_INTERVAL = 10 
-DEFAULT_SESSION_COUNT = 5 
-DEFAULT_VERIFY_SSL = True 
-
-LOGGER = logging.getLogger(__package__)
+{
+    "domain": "tautulli_active_streams",
+    "name": "Tautulli Active Streams",
+    "documentation": "https://github.com/Richardvaio/Tautulli_Active_Streams",
+    "integration_type": "device",
+    "requirements": [],
+    "dependencies": [],
+    "codeowners": ["@Richardvaio"],
+    "config_flow": true,
+    "version": "2.0.2"
+}
