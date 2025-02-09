@@ -16,7 +16,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     entities = [TautulliStreamSensor(coordinator, entry, i) for i in range(num_sensors)]
     
-    # Add diagnostic sensors
     diagnostic_sensors = [
         TautulliDiagnosticSensor(coordinator, entry, "stream_count"),
         TautulliDiagnosticSensor(coordinator, entry, "stream_count_direct_play"),
@@ -33,13 +32,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Tautulli stream sensor."""
-
     def __init__(self, coordinator, entry, index):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._entry = entry
         self._index = index
-        self._attr_unique_id = f"{entry.entry_id}_tautulli_stream_{index + 1}"
+        self._attr_unique_id = f"plex_session_{index + 1}_tautulli"
         self._attr_name = f"Plex Session {index + 1} (Tautulli)"
         self._attr_icon = "mdi:plex"
         self._attr_device_info = self.device_info
@@ -98,11 +96,6 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             }
         return {}
 
-
-
-
-
-
     @property
     def device_info(self):
         """Return device info so all sensors are grouped under one device."""
@@ -113,7 +106,6 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             "model": "Tautulli Active Streams",
             "entry_type": "service",
         }
-
 
 class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Tautulli diagnostic sensor."""
@@ -127,7 +119,7 @@ class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = f"Tautulli {metric.replace('_', ' ').title()}"
         self._attr_icon = "mdi:chart-bar"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
-        self._attr_device_info = self.device_info  # ✅ Make sure this is the same as session sensors
+        self._attr_device_info = self.device_info
 
     @property
     def state(self):
@@ -139,7 +131,7 @@ class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
     def device_info(self):
         """Ensure diagnostic sensors are grouped under the same device."""
         return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},  # ✅ Same device ID as session sensors
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
             "name": "Tautulli Active Streams",
             "manufacturer": "Richardvaio",
             "model": "Tautulli Active Streams",
