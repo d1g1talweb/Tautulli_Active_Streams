@@ -3,9 +3,10 @@
  ## ⭐ Like This Integration? 
  ``` If you find the **Tautulli Active Streams** integration helpful, please take a moment to give it a ⭐ on [GitHub] Your feedback and support help improve the project and motivate further development. Thanks! 🚀 ```
 
-A custom integration for Home Assistant that allows you to monitor active Plex streams using Tautulli Api.
+
 
 ## 📌 Features
+A custom integration for Home Assistant that allows you to monitor active Plex streams using Tautulli Api.
 
 - Dynamically creates session sensors based on active Plex streams.
 - Monitor Active Plex Streams – See who’s watching and what they’re watching.
