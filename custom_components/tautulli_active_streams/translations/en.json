@@ -7,7 +7,7 @@
         "data": {
           "url": "Enter the full URL of your Tautulli server (e.g., http://192.168.0.10:8181).",
           "api_key": "API key (found in the Tautulli settings).",
-          "scan_interval": "How often to refresh active streams? (Default: 10 seconds).",
+          "scan_interval": "How often to refresh active streams? (Default: 4 seconds).",
           "num_sensors": "Number of sensors to create for monitoring active streams.",
           "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate."
         }
@@ -18,10 +18,10 @@
     "step": {
       "init": {
         "title": "Tautulli Active Streams Options",
-        "description": "Restart required for changes to take effect.",
+        "description": "Configure scan interval (API frequency) and sensor count (active streams). Changes apply seamlessly without a restart.",
         "data": {
-          "scan_interval": "How often should Home Assistant update the stream data? (in seconds).",
-          "num_sensors": "Set the maximum number of sensors to create for monitoring streams.",
+          "scan_interval": "API Update frequency? (seconds) (Default 4).",
+          "num_sensors": "Maximum number of stream monitoring sensors.",
           "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate."
         }
       }
