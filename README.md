@@ -22,7 +22,7 @@ A custom integration for Home Assistant that allows you to monitor active Plex s
 
 :link: **GitHub:** [Tautulli Active Streams ](https://github.com/Richardvaio/Tautulli_Active_Streams)
 
-:link: **Home-assistant Community:** (https://community.home-assistant.io/t/tautulli-active-streams-integration)
+:link: **Home-assistant Community:** (https://community.home-assistant.io/t/custom-component-tautulli-active-streams)
 
 
 ---
