@@ -45,7 +45,7 @@ Produced by @stratotally and Edited by me.
 Dynamically displays active Plex sessions using **Tautulli** data fetched by the `Tautulli Active Streams` integration.
 
 1. **Install** `Tautulli Active Streams` integration via HACS or manually.
-2. **Ensure Lovelace resources** for `auto-entities`, `button-card`, `bar-card`, `card-mod`, and `auto-entities` are loaded.
+2. **Ensure Lovelace resources** for `auto-entities`, `button-card`, `bar-card`, `card-mod`care loaded.
 3. **Copy the YAML below** into your Lovelace dashboard.
 4. **Enjoy real-time Plex session monitoring!** 🎬🔥
 
