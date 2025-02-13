@@ -19,6 +19,8 @@ A custom integration for Home Assistant that allows you to monitor active Plex s
     * :tv: **Playback Progress & Quality**
 
 ---
+![Tautulli Active Streams - Card - Short](https://github.com/user-attachments/assets/451a6abf-4bd4-414d-bfd1-28be0f272734)
+---
 
 :link: **GitHub:** [Tautulli Active Streams ](https://github.com/Richardvaio/Tautulli_Active_Streams)
 
