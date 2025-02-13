@@ -6,6 +6,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.const import CONF_URL, CONF_API_KEY, CONF_SCAN_INTERVAL, CONF_VERIFY_SSL
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import entity_registry as er
+from .views import TautulliImageView
 
 from .const import DOMAIN, DEFAULT_SCAN_INTERVAL, DEFAULT_SESSION_COUNT
 from .api import TautulliAPI 
@@ -14,8 +15,8 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["sensor"]
 
- 
 DEFAULT_SESSION_SENSORS = DEFAULT_SESSION_COUNT
+IMAGE_PROXY_ENABLED = "image_proxy_enabled"  # New constant for the image proxy option
 
 async def async_remove_extra_session_sensors(hass: HomeAssistant, entry: ConfigEntry):
     """Remove extra session sensor entities that exceed the new configuration."""
@@ -31,7 +32,6 @@ async def async_remove_extra_session_sensors(hass: HomeAssistant, entry: ConfigE
             ent.unique_id.startswith("plex_session_") and 
             ent.unique_id.endswith("_tautulli")):
             try:
-       
                 number_str = ent.unique_id[len("plex_session_"):-len("_tautulli")]
                 sensor_number = int(number_str)
             except ValueError:
@@ -52,7 +52,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     session = async_get_clientsession(hass, verify_ssl)
     api = TautulliAPI(url, api_key, session, verify_ssl)
+    
+    # Store configuration data for use by the image proxy view.
+    hass.data["tautulli_integration_config"] = {
+        "base_url": entry.data[CONF_URL],
+        "api_key": entry.data[CONF_API_KEY],
+    }
 
+
+    # Register the image proxy view
+    hass.http.register_view(TautulliImageView)
     async def async_update_data():
         """Fetch data from Tautulli API (silently ignore failures)."""
         try:
@@ -60,6 +69,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return data if data else {}
         except Exception:
             return {}
+
 
     coordinator = DataUpdateCoordinator(
         hass,
@@ -71,6 +81,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await coordinator.async_config_entry_first_refresh()
     coordinator.sensor_count = entry.options.get("num_sensors", DEFAULT_SESSION_SENSORS)
+    coordinator.image_proxy_enabled = entry.options.get(IMAGE_PROXY_ENABLED, False)  # Save the image proxy option
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     try:
@@ -103,13 +114,12 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):
             "Increased sensor count detected (old: %s, new: %s); reloading integration to add new sensors.",
             coordinator.sensor_count, new_sensor_count
         )
-
         await hass.config_entries.async_reload(entry.entry_id)
     else:
-        
         await async_remove_extra_session_sensors(hass, entry)
         coordinator.update_interval = timedelta(
             seconds=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         )
+        coordinator.image_proxy_enabled = entry.options.get(IMAGE_PROXY_ENABLED, False)  # Update image proxy option
         await coordinator.async_request_refresh()
         coordinator.sensor_count = new_sensor_count
