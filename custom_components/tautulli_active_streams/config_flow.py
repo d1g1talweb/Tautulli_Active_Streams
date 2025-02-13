@@ -6,6 +6,8 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .const import DOMAIN, DEFAULT_SCAN_INTERVAL, DEFAULT_SESSION_COUNT
 from .api import TautulliAPI
 
+# You may also consider defining a constant for the image proxy option:
+IMAGE_PROXY_ENABLED = "image_proxy_enabled"
 
 class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handles the configuration flow for Tautulli Active Streams."""
@@ -17,11 +19,12 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         user_input = user_input or {}
 
         data_schema = vol.Schema({
-            vol.Required(CONF_URL, default=user_input.get(CONF_URL, "")): str, 
+            vol.Required(CONF_URL, default=user_input.get(CONF_URL, "")): str,
             vol.Required(CONF_API_KEY, default=user_input.get(CONF_API_KEY, "")): str,
-            vol.Optional(CONF_VERIFY_SSL, default=user_input.get(CONF_VERIFY_SSL, True)): bool, 
+            vol.Optional(CONF_VERIFY_SSL, default=user_input.get(CONF_VERIFY_SSL, True)): bool,
             vol.Required(CONF_SCAN_INTERVAL, default=user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): int,
             vol.Required("num_sensors", default=user_input.get("num_sensors", DEFAULT_SESSION_COUNT)): int,
+            vol.Optional(IMAGE_PROXY_ENABLED, default=user_input.get(IMAGE_PROXY_ENABLED, False)): bool,
         })
 
         return self.async_show_form(
@@ -35,20 +38,17 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-           
+            # Prevent duplicate configurations.
             existing_entry = self._async_abort_entries_match({CONF_URL: user_input[CONF_URL]})
             if existing_entry:
                 return self.async_abort(reason="already_configured")
 
-         
             url = user_input[CONF_URL].strip()
             verify_ssl = user_input.get(CONF_VERIFY_SSL, True)
 
-           
             session = async_get_clientsession(self.hass, verify_ssl)
             api = TautulliAPI(url, user_input[CONF_API_KEY], session, verify_ssl)
 
-         
             try:
                 response = await api.get_activity()
                 if not response:
@@ -57,17 +57,17 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
                 return await self._show_setup_form(errors, user_input)
 
-          
             return self.async_create_entry(
                 title="Tautulli Active Streams",
                 data={
-                    CONF_URL: url,  
+                    CONF_URL: url,
                     CONF_API_KEY: user_input[CONF_API_KEY],
                     CONF_VERIFY_SSL: verify_ssl,
                 },
                 options={
                     CONF_SCAN_INTERVAL: user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                     "num_sensors": user_input.get("num_sensors", DEFAULT_SESSION_COUNT),
+                    IMAGE_PROXY_ENABLED: user_input.get(IMAGE_PROXY_ENABLED, False),
                 },
             )
 
@@ -85,7 +85,7 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry):
         """Initialize options flow."""
-        self._config_entry = config_entry  # Changed from self.config_entry
+        self._config_entry = config_entry
         self.options = dict(config_entry.options)
 
     async def async_step_init(self, user_input=None):
@@ -96,6 +96,7 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
         options_schema = vol.Schema({
             vol.Required(CONF_SCAN_INTERVAL, default=self.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): int,
             vol.Required("num_sensors", default=self.options.get("num_sensors", DEFAULT_SESSION_COUNT)): int,
+            vol.Optional(IMAGE_PROXY_ENABLED, default=self.options.get(IMAGE_PROXY_ENABLED, False)): bool,
         })
 
         return self.async_show_form(
