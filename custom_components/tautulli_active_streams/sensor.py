@@ -14,8 +14,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     num_sensors = entry.options.get("num_sensors", DEFAULT_SESSION_COUNT)
 
+    # Create stream sensors.
     entities = [TautulliStreamSensor(coordinator, entry, i) for i in range(num_sensors)]
     
+    # Create diagnostic sensors.
     diagnostic_sensors = [
         TautulliDiagnosticSensor(coordinator, entry, "stream_count"),
         TautulliDiagnosticSensor(coordinator, entry, "stream_count_direct_play"),
@@ -32,6 +34,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Tautulli stream sensor."""
+    
     def __init__(self, coordinator, entry, index):
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -52,22 +55,29 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        """Return extra attributes for the sensor, including a cleaned-up image URL."""
+        """Return extra attributes for the sensor, including the image URL via the proxy."""
         sessions = self.coordinator.data.get("sessions", [])
         if len(sessions) > self._index:
             session = sessions[self._index]
 
+            # Get base_url and api_key for validation purposes, though they aren't used in constructing the proxy URL.
             base_url = self._entry.data.get(CONF_URL)
             api_key = self._entry.data.get(CONF_API_KEY)
-
-            if not api_key or not base_url:
+            if not base_url or not api_key:
                 return {}
 
+            # Always use the image proxy: build a relative URL.
             image_url = None
             if session.get("grandparent_thumb"):
-                image_url = f"{base_url}/api/v2?apikey={api_key}&cmd=pms_image_proxy&img={session.get('grandparent_thumb')}&width=300&height=450&fallback=poster&refresh=true"
+                image_url = (
+                    f"/api/tautulli/image?img={session.get('grandparent_thumb')}"
+                    "&width=300&height=450&fallback=poster&refresh=true"
+                )
             elif session.get("thumb"):
-                image_url = f"{base_url}/api/v2?apikey={api_key}&cmd=pms_image_proxy&img={session.get('thumb')}&width=300&height=450&fallback=poster&refresh=true"
+                image_url = (
+                    f"/api/tautulli/image?img={session.get('thumb')}"
+                    "&width=300&height=450&fallback=poster&refresh=true"
+                )
 
             return {
                 "user": session.get("user"),
@@ -76,7 +86,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                 "full_title": session.get("full_title"),
                 "grandparent_thumb": session.get("grandparent_thumb"),
                 "thumb": session.get("thumb"),
-                "image_url": image_url,  
+                "image_url": image_url,
                 "parent_media_index": session.get("parent_media_index"),
                 "media_index": session.get("media_index"),
                 "year": session.get("year"),
@@ -98,7 +108,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self):
-        """Return device info so all sensors are grouped under one device."""
+        """Return device info so that all sensors are grouped under one device."""
         return {
             "identifiers": {(DOMAIN, self._entry.entry_id)},
             "name": "Tautulli Active Streams",
@@ -107,9 +117,10 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             "entry_type": "service",
         }
 
+
 class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Tautulli diagnostic sensor."""
-
+    
     def __init__(self, coordinator, entry, metric):
         """Initialize the diagnostic sensor."""
         super().__init__(coordinator)
