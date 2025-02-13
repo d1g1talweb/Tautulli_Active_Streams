@@ -9,8 +9,7 @@
           "api_key": "API key (found in the Tautulli settings).",
           "scan_interval": "How often to refresh active streams? (Default: 4 seconds).",
           "num_sensors": "Number of sensors to create for monitoring active streams.",
-          "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate.",
-          "image_proxy_enabled": "Image Proxy: Route images through Home Assistant to protect your API key."
+          "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate."
         }
       }
     }
@@ -19,12 +18,11 @@
     "step": {
       "init": {
         "title": "Tautulli Active Streams Options",
-        "description": "Changes apply seamlessly without a restart.",
+        "description": "Configure scan interval (API frequency) and sensor count (active streams). Changes apply seamlessly without a restart.",
         "data": {
-          "scan_interval": "API Update frequency? (Default 4).",
+          "scan_interval": "API Update frequency? (seconds) (Default 4).",
           "num_sensors": "Maximum number of stream monitoring sensors.",
-          "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate.",
-          "image_proxy_enabled": "Image Proxy: Use a local proxy for images."
+          "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate."
         }
       }
     }
