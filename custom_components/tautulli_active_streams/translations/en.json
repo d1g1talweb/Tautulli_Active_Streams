@@ -18,7 +18,7 @@
     "step": {
       "init": {
         "title": "Tautulli Active Streams Options",
-        "description": "Configure scan interval (API frequency) and sensor count (active streams). Changes apply seamlessly without a restart.",
+        "description": "Changes apply seamlessly without a restart.",
         "data": {
           "scan_interval": "API Update frequency? (seconds) (Default 4).",
           "num_sensors": "Maximum number of stream monitoring sensors.",
