@@ -63,19 +63,40 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             if not api_key or not base_url:
                 return {}
 
+           # Check the 'use_image_proxy' option from the config entry options.
+            image_proxy = self._entry.options.get("image_proxy", False)
             image_url = None
-            if session.get("grandparent_thumb"):
-                image_url = (
-                    f"/api/tautulli/image?img={session.get('grandparent_thumb')}"
-                    "&width=300&height=450&fallback=poster&refresh=true"
-                )
-            elif session.get("thumb"):
-                image_url = (
-                    f"/api/tautulli/image?img={session.get('thumb')}"
-                    "&width=300&height=450&fallback=poster&refresh=true"
-                )
-            
-            return {
+            if image_proxy:
+                # Build the URL for the proxy
+                if session.get("grandparent_thumb"):
+                    image_url = (
+                        f"/api/tautulli/image?img={session.get('grandparent_thumb')}"
+                        "&width=300&height=450&fallback=poster&refresh=true"
+                    )
+                elif session.get("thumb"):
+                    image_url = (
+                        f"/api/tautulli/image?img={session.get('thumb')}"
+                        "&width=300&height=450&fallback=poster&refresh=true"
+                    )
+            else:
+                # Use the direct URL from the session (if available) or fall back
+                if session.get("grandparent_thumb"):
+                    image_url = (
+                        f"{base_url}/api/v2?apikey={api_key}&cmd=pms_image_proxy"
+                        f"&img={session.get('grandparent_thumb')}&width=300&height=450"
+                        "&fallback=poster&refresh=true"
+                    )
+                elif session.get("thumb"):
+                    image_url = (
+                        f"{base_url}/api/v2?apikey={api_key}&cmd=pms_image_proxy"
+                        f"&img={session.get('thumb')}&width=300&height=450"
+                        "&fallback=poster&refresh=true"
+                    )
+                else:
+                    image_url = None
+                    
+                    
+            attributes = {
                 "user": session.get("user"),
                 "progress_percent": session.get("progress_percent"),
                 "media_type": session.get("media_type"),
@@ -100,6 +121,58 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                 "stream_video_resolution": session.get("stream_video_resolution"),
                 "transcode_decision": session.get("transcode_decision"),
             }
+
+            # Check if extra attributes are enabled in options.
+            if self._entry.options.get("advanced_attributes"):
+                attributes.update({
+                    # Additional keys fetched from the session
+                    "friendly_name": session.get("friendly_name"),
+                    "username": session.get("username"),
+                    "user_thumb": session.get("user_thumb"),
+                    "container": session.get("container"),
+                    "video_codec": session.get("video_codec"),
+                    "aspect_ratio": session.get("aspect_ratio"),
+                    "video_framerate": session.get("video_framerate"),
+                    "video_profile": session.get("video_profile"),
+                    "video_dovi_profile": session.get("video_dovi_profile"),
+                    "video_dynamic_range": session.get("video_dynamic_range"),
+                    "video_color_space": session.get("video_color_space"),
+                    "video_dynamic_range": session.get("video_dynamic_range"),
+                    "audio_codec": session.get("audio_codec"),
+                    "audio_channels": session.get("audio_channels"),
+                    "audio_channel_layout": session.get("audio_channel_layout"),
+                    "audio_profile": session.get("audio_profile"),
+                    "audio_bitrate": session.get("audio_bitrate"),
+                    "audio_language": session.get("audio_language"),
+                    "audio_language_code": session.get("audio_language_code"),
+                    "subtitle_language": session.get("subtitle_language"),
+    
+                    "transcode_throttled": session.get("transcode_throttled"),
+                    "transcode_progress": session.get("transcode_progress"),
+                    "transcode_speed": session.get("transcode_speed"),
+                    "transcode_container": session.get("transcode_container"),
+                    "transcode_audio_codec": session.get("transcode_audio_codec"),
+                    "transcode_video_codec": session.get("transcode_video_codec"),
+                    "audio_decision": session.get("audio_decision"),
+                    "video_decision": session.get("video_decision"),
+                    "subtitle_decision": session.get("subtitle_decision"),
+                    "stream_container": session.get("stream_container"),
+                    "stream_bitrate": session.get("stream_bitrate"),
+                    "stream_video_framerate": session.get("stream_video_framerate"),
+                    "stream_video_resolution": session.get("stream_video_resolution"),
+                    "stream_duration": session.get("stream_duration"),
+                    "stream_container_decision": session.get("stream_container_decision"),
+                    "stream_video_dovi_profile": session.get("stream_video_dovi_profile"),
+                    "stream_video_decision": session.get("stream_video_decision"),
+                    "stream_audio_bitrate": session.get("stream_audio_bitrate"),
+                    "stream_audio_bitrate_mode": session.get("stream_audio_bitrate_mode"),
+                    "stream_audio_channels": session.get("stream_audio_channels"),
+                    "stream_audio_channel_layout": session.get("stream_audio_channel_layout"),
+                    "stream_audio_codec": session.get("stream_audio_codec"),
+                    "stream_audio_language": session.get("stream_audio_language"),
+                    "stream_audio_language_code": session.get("stream_audio_language_code"),
+                })
+            return attributes
         return {}
 
     @property
@@ -121,8 +194,8 @@ class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._entry = entry
         self._metric = metric
-        self._attr_unique_id = f"{entry.entry_id}_tautulli_{metric}"
-        self._attr_name = f"Tautulli {metric.replace('_', ' ').title()}"
+        self._attr_unique_id = f"{entry.entry_id}_{metric}"
+        self._attr_name = f"{metric.replace('_', ' ').title()}"
         self._attr_icon = "mdi:chart-bar"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_device_info = self.device_info
