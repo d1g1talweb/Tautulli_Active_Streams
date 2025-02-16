@@ -75,7 +75,7 @@ filter:
     - state: unavailable
     - state: "off"
   include:
-    - entity_id: "*plex*session*"
+    - entity_id: "*plex_session*"
       options:
         entity: this.entity_id
         type: custom:button-card
