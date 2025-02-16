@@ -6,10 +6,16 @@
         "description": "To find your API key, open the Tautulli webpage and navigate to **Settings** → **Web Interface**. The API key is at the bottom of that page.\n\n**Examples of URL formats:**\n- **Local (HTTP)**: `http://192.168.0.10:8181`\n- **Remote / Reverse Proxy (HTTPS)**: `https://tautulli.example.com`\n\nIf using HTTPS (SSL), ensure that your certificate is valid or disable SSL verification below.",
         "data": {
           "url": "Enter the full URL of your Tautulli server (e.g., http://192.168.0.10:8181).",
-          "api_key": "API key (found in the Tautulli settings).",
+          "api_key": {
+            "name": "API key (found in the Tautulli settings).",
+            "description": "Enter your Tautulli API key here.",
+            "ui:inputType": "password"
+          },
           "scan_interval": "How often to refresh active streams? (Default: 4 seconds).",
           "num_sensors": "Number of sensors to create for monitoring active streams.",
-          "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate."
+          "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate.",
+          "image_proxy": "Use Image Proxy? (Check to proxy images via Home Assistant)",
+          "advanced_attributes": "Enable Extra Attributes? (Include additional session attributes)"
         }
       }
     }
@@ -18,11 +24,13 @@
     "step": {
       "init": {
         "title": "Tautulli Active Streams Options",
-        "description": "Changes apply seamlessly without a restart.",
+        "description": "Configure scan interval (API frequency) and sensor count (active streams). Changes apply seamlessly without a restart.",
         "data": {
           "scan_interval": "API Update frequency? (seconds) (Default 4).",
           "num_sensors": "Maximum number of stream monitoring sensors.",
-          "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate."
+          "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate.",
+          "image_proxy": "Use Image Proxy?",
+          "advanced_attributes": "Enable Extra Attributes?"
         }
       }
     }
