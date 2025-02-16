@@ -124,6 +124,16 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
 
             # Check if extra attributes are enabled in options.
             if self._entry.options.get("advanced_attributes"):
+                if session.get("stream_duration"):
+                    total_ms = float(session.get("stream_duration"))
+                    total_seconds = total_ms / 1000  # convert milliseconds to seconds
+                    hours = int(total_seconds // 3600)
+                    minutes = int((total_seconds % 3600) // 60)
+                    seconds = int(total_seconds % 60)
+                    formatted_duration = f"{hours}:{minutes:02d}:{seconds:02d}"
+                else:
+                    formatted_duration = None
+
                 attributes.update({
                     # Additional keys fetched from the session
                     "friendly_name": session.get("friendly_name"),
@@ -160,7 +170,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                     "stream_bitrate": session.get("stream_bitrate"),
                     "stream_video_framerate": session.get("stream_video_framerate"),
                     "stream_video_resolution": session.get("stream_video_resolution"),
-                    "stream_duration": session.get("stream_duration"),
+                    "stream_duration": formatted_duration,
                     "stream_container_decision": session.get("stream_container_decision"),
                     "stream_video_dovi_profile": session.get("stream_video_dovi_profile"),
                     "stream_video_decision": session.get("stream_video_decision"),
