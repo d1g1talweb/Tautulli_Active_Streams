@@ -22,6 +22,9 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional(CONF_VERIFY_SSL, default=user_input.get(CONF_VERIFY_SSL, True)): bool, 
             vol.Required(CONF_SCAN_INTERVAL, default=user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): int,
             vol.Required("num_sensors", default=user_input.get("num_sensors", DEFAULT_SESSION_COUNT)): int,
+            vol.Optional("image_proxy", default=False): bool,
+            vol.Optional("advanced_attributes", default=False): bool,
+
         })
 
         return self.async_show_form(
@@ -92,11 +95,14 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
         """Manage the options (Configure menu)."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
-
+        current = self.config_entry.options.get("advanced_attributes", False)
         options_schema = vol.Schema({
             vol.Required(CONF_SCAN_INTERVAL, default=self.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): int,
             vol.Required("num_sensors", default=self.options.get("num_sensors", DEFAULT_SESSION_COUNT)): int,
+            vol.Optional("advanced_attributes", default=self.config_entry.options.get("advanced_attributes", False)): bool,
+            vol.Optional("image_proxy", default=self.config_entry.options.get("image_proxy", False)): bool,
         })
+
 
         return self.async_show_form(
             step_id="init",
