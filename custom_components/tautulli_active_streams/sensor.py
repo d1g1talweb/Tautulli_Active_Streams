@@ -3,17 +3,14 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.const import STATE_OFF, CONF_URL, CONF_API_KEY, CONF_VERIFY_SSL
 from homeassistant.helpers.entity import EntityCategory
-
 from .const import DOMAIN, DEFAULT_SESSION_COUNT
 
 _LOGGER = logging.getLogger(__name__)
-
 
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up the Tautulli stream sensors and diagnostic sensors."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
     num_sensors = entry.options.get("num_sensors", DEFAULT_SESSION_COUNT)
-
     entities = [TautulliStreamSensor(coordinator, entry, i) for i in range(num_sensors)]
     
     diagnostic_sensors = [
@@ -28,7 +25,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
     
     async_add_entities(entities, True)
     async_add_entities(diagnostic_sensors, True)
-
 
 class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Tautulli stream sensor."""
@@ -95,7 +91,6 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                 else:
                     image_url = None
                     
-                    
             attributes = {
                 "user": session.get("user"),
                 "progress_percent": session.get("progress_percent"),
@@ -140,14 +135,13 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                     "username": session.get("username"),
                     "user_thumb": session.get("user_thumb"),
                     "container": session.get("container"),
-                    "video_codec": session.get("video_codec"),
                     "aspect_ratio": session.get("aspect_ratio"),
+                    "video_codec": session.get("video_codec"),
                     "video_framerate": session.get("video_framerate"),
                     "video_profile": session.get("video_profile"),
                     "video_dovi_profile": session.get("video_dovi_profile"),
                     "video_dynamic_range": session.get("video_dynamic_range"),
                     "video_color_space": session.get("video_color_space"),
-                    "video_dynamic_range": session.get("video_dynamic_range"),
                     "audio_codec": session.get("audio_codec"),
                     "audio_channels": session.get("audio_channels"),
                     "audio_channel_layout": session.get("audio_channel_layout"),
@@ -156,29 +150,29 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                     "audio_language": session.get("audio_language"),
                     "audio_language_code": session.get("audio_language_code"),
                     "subtitle_language": session.get("subtitle_language"),
-    
-                    "transcode_throttled": session.get("transcode_throttled"),
-                    "transcode_progress": session.get("transcode_progress"),
-                    "transcode_speed": session.get("transcode_speed"),
-                    "transcode_container": session.get("transcode_container"),
-                    "transcode_audio_codec": session.get("transcode_audio_codec"),
-                    "transcode_video_codec": session.get("transcode_video_codec"),
+                    "container_decision": session.get("stream_container_decision"),
                     "audio_decision": session.get("audio_decision"),
                     "video_decision": session.get("video_decision"),
                     "subtitle_decision": session.get("subtitle_decision"),
+                    "transcode_container": session.get("transcode_container"),
+                    "transcode_audio_codec": session.get("transcode_audio_codec"),
+                    "transcode_video_codec": session.get("transcode_video_codec"),
+                    "transcode_throttled": session.get("transcode_throttled"),
+                    "transcode_progress": session.get("transcode_progress"),
+                    "transcode_speed": session.get("transcode_speed"),
                     "stream_container": session.get("stream_container"),
+                    "stream_duration": formatted_duration,
                     "stream_bitrate": session.get("stream_bitrate"),
+                    "stream_video_bitrate": session.get("stream_video_bitrate"),
+                    "stream_video_codec": session.get("stream_video_codec"),
                     "stream_video_framerate": session.get("stream_video_framerate"),
                     "stream_video_resolution": session.get("stream_video_resolution"),
-                    "stream_duration": formatted_duration,
-                    "stream_container_decision": session.get("stream_container_decision"),
                     "stream_video_dovi_profile": session.get("stream_video_dovi_profile"),
                     "stream_video_decision": session.get("stream_video_decision"),
                     "stream_audio_bitrate": session.get("stream_audio_bitrate"),
-                    "stream_audio_bitrate_mode": session.get("stream_audio_bitrate_mode"),
+                    "stream_audio_codec": session.get("stream_audio_codec"),
                     "stream_audio_channels": session.get("stream_audio_channels"),
                     "stream_audio_channel_layout": session.get("stream_audio_channel_layout"),
-                    "stream_audio_codec": session.get("stream_audio_codec"),
                     "stream_audio_language": session.get("stream_audio_language"),
                     "stream_audio_language_code": session.get("stream_audio_language_code"),
                 })
