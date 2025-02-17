@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from datetime import timedelta
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -84,8 +85,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     try:
-        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    except Exception:
+        # Shield the forward_entry_setups call from external cancellations.
+        await asyncio.shield(hass.config_entries.async_forward_entry_setups(entry, PLATFORMS))
+    except asyncio.CancelledError:
+        _LOGGER.error("Setup of sensor platforms was cancelled")
+        return False
+    except Exception as ex:
+        _LOGGER.error("Error forwarding entry setups: %s", ex)
         return False
 
     entry.async_on_unload(entry.add_update_listener(async_update_options))
