@@ -6,7 +6,6 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .const import DOMAIN, DEFAULT_SCAN_INTERVAL, DEFAULT_SESSION_COUNT
 from .api import TautulliAPI
 
-
 class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handles the configuration flow for Tautulli Active Streams."""
 
@@ -24,7 +23,6 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required("num_sensors", default=user_input.get("num_sensors", DEFAULT_SESSION_COUNT)): int,
             vol.Optional("image_proxy", default=False): bool,
             vol.Optional("advanced_attributes", default=False): bool,
-
         })
 
         return self.async_show_form(
@@ -38,20 +36,15 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-           
             existing_entry = self._async_abort_entries_match({CONF_URL: user_input[CONF_URL]})
             if existing_entry:
                 return self.async_abort(reason="already_configured")
 
-         
             url = user_input[CONF_URL].strip()
             verify_ssl = user_input.get(CONF_VERIFY_SSL, True)
-
-           
             session = async_get_clientsession(self.hass, verify_ssl)
             api = TautulliAPI(url, user_input[CONF_API_KEY], session, verify_ssl)
 
-         
             try:
                 response = await api.get_activity()
                 if not response:
@@ -60,7 +53,6 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
                 return await self._show_setup_form(errors, user_input)
 
-          
             return self.async_create_entry(
                 title="Tautulli Active Streams",
                 data={
@@ -71,9 +63,10 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 options={
                     CONF_SCAN_INTERVAL: user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                     "num_sensors": user_input.get("num_sensors", DEFAULT_SESSION_COUNT),
+                    "image_proxy": user_input.get("image_proxy", False),
+                    "advanced_attributes": user_input.get("advanced_attributes", False),            
                 },
             )
-
         return await self._show_setup_form()
 
     @staticmethod
@@ -99,8 +92,8 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
         options_schema = vol.Schema({
             vol.Required(CONF_SCAN_INTERVAL, default=self.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): int,
             vol.Required("num_sensors", default=self.options.get("num_sensors", DEFAULT_SESSION_COUNT)): int,
-            vol.Optional("advanced_attributes", default=self.config_entry.options.get("advanced_attributes", False)): bool,
             vol.Optional("image_proxy", default=self.config_entry.options.get("image_proxy", False)): bool,
+            vol.Optional("advanced_attributes", default=self.config_entry.options.get("advanced_attributes", False)): bool,
         })
 
 
