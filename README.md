@@ -66,7 +66,7 @@ Dynamically displays active Plex sessions using **Tautulli** data fetched by the
 4. **Enjoy real-time Plex session monitoring!** 🎬🔥
 
 ---
-Last update 18.02.2025
+Last updated 18.02.2025
 ```
 type: custom:auto-entities
 filter:
