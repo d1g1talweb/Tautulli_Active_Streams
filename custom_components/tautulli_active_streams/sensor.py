@@ -131,7 +131,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
 
                 attributes.update({
                     # Additional keys fetched from the session
-                    "friendly_name": session.get("friendly_name"),
+                    "user_friendly_name": session.get("friendly_name"),
                     "username": session.get("username"),
                     "user_thumb": session.get("user_thumb"),
                     "container": session.get("container"),
