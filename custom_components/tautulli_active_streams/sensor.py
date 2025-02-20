@@ -128,7 +128,17 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                     formatted_duration = f"{hours}:{minutes:02d}:{seconds:02d}"
                 else:
                     formatted_duration = None
-
+                    
+                if session.get("view_offset"):
+                    remain_total_ms = float(session.get("stream_duration")) - float(session.get("view_offset"))
+                    remain_total_seconds = remain_total_ms / 1000  # convert milliseconds to seconds
+                    remain_hours = int(remain_total_seconds // 3600)
+                    remain_minutes = int((remain_total_seconds % 3600) // 60)
+                    remain_seconds = int(remain_total_seconds % 60)
+                    formatted_remaining = f"{remain_hours}:{remain_minutes:02d}:{remain_seconds:02d}"
+                else:
+                    formatted_remaining = None
+                
                 attributes.update({
                     # Additional keys fetched from the session
                     "user_friendly_name": session.get("friendly_name"),
@@ -162,6 +172,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                     "transcode_speed": session.get("transcode_speed"),
                     "stream_container": session.get("stream_container"),
                     "stream_duration": formatted_duration,
+                    "stream_remaining": formatted_remaining,
                     "stream_bitrate": session.get("stream_bitrate"),
                     "stream_video_bitrate": session.get("stream_video_bitrate"),
                     "stream_video_codec": session.get("stream_video_codec"),
