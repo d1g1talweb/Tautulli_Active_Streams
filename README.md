@@ -2,6 +2,7 @@
 
  ## ⭐ Like This Integration? 
  ``` If you find the **Tautulli Active Streams** integration helpful, please take a moment to give it a ⭐ on [GitHub] Your feedback and support help improve the project and motivate further development. Thanks! 🚀 ```
+<br>
 
 ---
 
@@ -28,10 +29,10 @@ A custom integration for Home Assistant that allows you to monitor active Plex s
 
 :link: **Home-assistant Community:** (https://community.home-assistant.io/t/custom-component-tautulli-active-streams)
 
+<br>
 
 ---
 
-<br>
 
 ## **:inbox_tray: Installation**
 
@@ -58,9 +59,10 @@ When clicked, It will trigger a bubble popup card where all active sessions can 
 
 Give it a try and let me know what you think! :rocket:
 
+<br>
+
 ---
 
-<br>
 
 ## 🚀Custom Lovelace card
 Produced by @stratotally and Edited by me.
@@ -285,9 +287,10 @@ card_param: cards
 !</pre>
 </details>
 
+<br>
+
 ---
 
-<br>
 
 ## 🛠 Troubleshooting
 
@@ -297,9 +300,9 @@ card_param: cards
 - Restart Home Assistant after making changes.
 - Check **Developer Tools** → **States** for `sensor.plex_session_*`.
 
----
-
 <br>
+
+---
 
 ## 🤝 Contributing
 Want to improve this integration? Feel free to submit a PR or open an issue on GitHub!
