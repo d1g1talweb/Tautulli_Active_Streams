@@ -74,8 +74,8 @@ Dynamically displays active Plex sessions using **Tautulli** data fetched by the
 ---
 
 <details>
-<summary>Code YAML</summary>
-Last updated 18.02.2025 <br><br> 
+<summary>Card YAML - Last updated 18.02.2025</summary>
+<br><br> 
  
 ```
 type: custom:auto-entities
