@@ -209,18 +209,32 @@ class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._entry = entry
         self._metric = metric
-        self._attr_unique_id = f"{entry.entry_id}_{metric}"
-        self._attr_name = f"{metric.replace('_', ' ').title()}"
-        self._attr_icon = "mdi:chart-bar"
+        self._attr_unique_id = f"tautulli_{entry.entry_id}_{metric}"
+        self.entity_id = f"sensor.tautulli_{metric}" 
+        self._attr_name = f"{metric.replace('_', ' ').title()}" 
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_device_info = self.device_info
-
+        
     @property
     def state(self):
         """Return the state of the diagnostic sensor."""
         diagnostics = self.coordinator.data.get("diagnostics", {})
         return diagnostics.get(self._metric, 0)
-
+        
+    @property
+    def icon(self):
+        """Return an icon based on the sensor type."""
+        icon_map = {
+            "stream_count": "mdi:plex",  # Streaming count
+            "stream_count_direct_play": "mdi:play-circle",
+            "stream_count_direct_stream": "mdi:play-network",
+            "stream_count_transcode": "mdi:cog",
+            "total_bandwidth": "mdi:download-network",
+            "lan_bandwidth": "mdi:lan",
+            "wan_bandwidth": "mdi:wan",
+        }
+        return icon_map.get(self._metric, "mdi:chart-bar") 
+        
     @property
     def device_info(self):
         """Ensure diagnostic sensors are grouped under the same device."""
