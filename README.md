@@ -67,9 +67,10 @@ Dynamically displays active Plex sessions using **Tautulli** data fetched by the
 
 <details>
 <summary>Code YAML</summary>
-<pre>$ Last updated 18.02.2025<br> 
+<pre>$Last updated 18.02.2025<br> 
  
 ```
+
 type: custom:auto-entities
 filter:
   exclude:
@@ -275,8 +276,9 @@ card:
 card_param: cards
 ```
 
-<br> !</pre>
+</pre>
 </details>
+
 ---
 
 ## 🛠 Troubleshooting
