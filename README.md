@@ -272,7 +272,7 @@ filter:
 card:
   type: vertical-stack
 card_param: cards
-``` !</pre>
+``` <br> !</pre>
 </details>
 ---
 
