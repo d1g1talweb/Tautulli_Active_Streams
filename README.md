@@ -67,7 +67,8 @@ Dynamically displays active Plex sessions using **Tautulli** data fetched by the
 
 <details>
 <summary>Code YAML</summary>
-<pre>$ Last updated 18.02.2025<br>
+<pre>$ Last updated 18.02.2025<br> 
+ 
 ```
 type: custom:auto-entities
 filter:
@@ -272,7 +273,9 @@ filter:
 card:
   type: vertical-stack
 card_param: cards
-``` <br> !</pre>
+```
+
+<br> !</pre>
 </details>
 ---
 
