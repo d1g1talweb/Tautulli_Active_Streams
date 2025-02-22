@@ -50,18 +50,17 @@ A custom integration for Home Assistant that allows you to monitor active Plex s
   * Go to **Settings → Devices & Services** and **Add** the integration.
   * Enter your **Tautulli details (URL, API Key)**, and set the Session Sensor Count and Refresh Interval.
 
+---
+
 # Don't forget to add the Card below.
 
 My usage: I have a chip card that displays the current active session count. 
 When clicked, It will trigger a bubble popup card where all active sessions can be viewed.
 
----
-
-Give it a try and let me know what you think! :rocket:
 
 <br>
 
----
+
 
 
 ## 🚀Custom Lovelace card
@@ -73,6 +72,7 @@ Dynamically displays active Plex sessions using **Tautulli** data fetched by the
 3. **Copy the YAML below** into your Lovelace dashboard. 
 4. **Enjoy real-time Plex session monitoring!** 🎬🔥
 
+<br>
 
 <details>
 <summary>Card YAML - Last updated 18.02.2025</summary>
