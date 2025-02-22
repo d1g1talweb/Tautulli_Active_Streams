@@ -15,33 +15,7 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["sensor"]
 
- 
 DEFAULT_SESSION_SENSORS = DEFAULT_SESSION_COUNT
-
-async def async_remove_extra_session_sensors(hass: HomeAssistant, entry: ConfigEntry):
-    """Remove extra session sensor entities that exceed the new configuration."""
-    registry = er.async_get(hass)
-    
-    session_sensor_count = entry.options.get("num_sensors", DEFAULT_SESSION_SENSORS)
-    _LOGGER.debug("New num_sensors option is: %s", session_sensor_count)
-    
-    entries = er.async_entries_for_config_entry(registry, entry.entry_id)
-    
-    for ent in entries:
-        if (ent.domain == "sensor" and 
-            ent.unique_id.startswith("plex_session_") and 
-            ent.unique_id.endswith("_tautulli")):
-            try:
-       
-                number_str = ent.unique_id[len("plex_session_"):-len("_tautulli")]
-                sensor_number = int(number_str)
-            except ValueError:
-                _LOGGER.debug("Unable to parse sensor number from unique_id: %s", ent.unique_id)
-                continue
-            
-            if sensor_number > session_sensor_count:
-                _LOGGER.debug("Removing extra sensor entity: %s (sensor number: %s)", ent.entity_id, sensor_number)
-                registry.async_remove(ent.entity_id)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tautulli Active Streams integration."""
@@ -55,12 +29,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     api = TautulliAPI(url, api_key, session, verify_ssl)
     
     # --- Image Proxy Setup ---
-    # Store configuration data for the image proxy view.
-    hass.data["tautulli_integration_config"] = {
-        "base_url": url,
-        "api_key": api_key
-    }
-    # Register the image proxy view here where hass is available.
+    hass.data["tautulli_integration_config"] = {"base_url": url, "api_key": api_key}
     hass.http.register_view(TautulliImageView)
     # -------------------------
 
@@ -94,20 +63,53 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Error forwarding entry setups: %s", ex)
         return False
 
+    try:
+        from .services import async_setup_kill_stream_services
+        await async_setup_kill_stream_services(hass, entry, api)
+    except Exception as exc:
+        _LOGGER.error("Exception during kill stream service registration: %s", exc, exc_info=True)
+
+
     entry.async_on_unload(entry.add_update_listener(async_update_options))
     return True
 
+async def async_remove_extra_session_sensors(hass: HomeAssistant, entry: ConfigEntry):
+    """Remove extra session sensor entities that exceed the new configuration."""
+    registry = er.async_get(hass)
+    
+    session_sensor_count = entry.options.get("num_sensors", DEFAULT_SESSION_SENSORS)
+    _LOGGER.debug("New num_sensors option is: %s", session_sensor_count)
+    
+    entries = er.async_entries_for_config_entry(registry, entry.entry_id)
+    
+    for ent in entries:
+        if (ent.domain == "sensor" and 
+            ent.unique_id.startswith("plex_session_") and 
+            ent.unique_id.endswith("_tautulli")):
+            try:
+       
+                number_str = ent.unique_id[len("plex_session_"):-len("_tautulli")]
+                sensor_number = int(number_str)
+            except ValueError:
+                _LOGGER.debug("Unable to parse sensor number from unique_id: %s", ent.unique_id)
+                continue
+            
+            if sensor_number > session_sensor_count:
+                _LOGGER.debug("Removing extra sensor entity: %s (sensor number: %s)", ent.entity_id, sensor_number)
+                registry.async_remove(ent.entity_id)
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Handle unloading of the integration."""
-    if DOMAIN not in hass.data or entry.entry_id not in hass.data[DOMAIN]:
-        return False
-
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
-
-    return unload_ok
+    """Unload a config entry."""
+    if DOMAIN in hass.data and entry.entry_id in hass.data[DOMAIN]:
+        # Unregister the kill stream services.
+        for service in ["kill_all_streams", "kill_user_stream"]:
+            hass.services.async_remove(DOMAIN, service)
+        # Continue with unloading platforms...
+        unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+        if unload_ok:
+            hass.data[DOMAIN].pop(entry.entry_id, None)
+        return unload_ok
+    return False
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):
     """Handle options update for Tautulli Active Streams."""

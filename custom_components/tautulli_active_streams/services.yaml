@@ -1,0 +1,26 @@
+kill_all_streams:
+  name: Kill All Streams
+  description: Terminate all active Tautulli streams.
+  fields:
+    message:
+      name: Message
+      description: The message to send when terminating streams.
+      example: "Stream ended by admin."
+      default: "Stream ended by admin."
+      required: false
+
+kill_user_stream:
+  name: Kill User Stream
+  description: Terminate all streams for a specific user.
+  fields:
+    user:
+      name: User
+      description: The username whose streams should be terminated.
+      example: "john_smith"
+      required: true
+    message:
+      name: Message
+      description: The message to send when terminating streams.
+      example: "Stream ended by admin."
+      default: "Stream ended by admin."
+      required: false

@@ -51,3 +51,16 @@ class TautulliAPI:
 
         except Exception as err:
             return {"sessions": [], "diagnostics": {}}
+            
+    async def terminate_session(self, session_id, message=""):
+        url = f"{self._base_url}?apikey={self._api_key}&cmd=terminate_session"
+        params = {
+            "session_id": session_id,
+            "message": message
+        }
+        _LOGGER.debug("Terminating Tautulli session: %s", params)
+        async with self._session.get(url, params=params, timeout=10, ssl=self._verify_ssl) as resp:
+            return await resp.json()
+    
+
+            
