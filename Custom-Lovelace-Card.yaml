@@ -1,3 +1,6 @@
+# Last Updated: 22.02.2025
+
+
 type: custom:auto-entities
 filter:
   exclude:
@@ -5,7 +8,7 @@ filter:
     - state: unavailable
     - state: "off"
   include:
-    - entity_id: "*plex_session*"
+    - entity_id: "*plex_session_*"
       options:
         entity: this.entity_id
         type: custom:button-card
