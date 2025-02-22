@@ -1,0 +1,29 @@
+alias: Tautulli Kill Streams - Two Plex Sessions Detected -  john_smith - Kill Last Session
+description: >
+  Triggers when exactly two plex_session sensors belong to user=john_smith, then
+  grabs the most recently updated sensor's session_id.
+triggers:
+  - value_template: |
+      {% set matched = states.sensor
+         | selectattr('entity_id','contains','plex_session')
+         | selectattr('attributes.user','equalto','john_smith')
+         | list %}
+      {{ matched | length == 2 }}
+    trigger: template
+conditions: []
+actions:
+  - data_template:
+      session_id: |
+        {% set matched_sensors = states.sensor
+           | selectattr('entity_id','contains','plex_session')
+           | selectattr('attributes.user','equalto','john_smith')
+           | sort(attribute='last_changed', reverse=True)
+           | list %}
+        {% if matched_sensors | length == 2 %}
+          {{ matched_sensors[0].attributes.session_id }}
+        {% else %}
+          unknown
+        {% endif %}
+      message: Stream ended by admin. Multiple Sessions Detected
+    action: tautulli_active_streams.kill_session_stream
+mode: single
