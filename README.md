@@ -12,7 +12,6 @@
 A custom integration for Home Assistant that allows you to monitor active Plex streams using Tautulli Api.
 
 - Dynamically creates session sensors based on active Plex streams.
-- Monitor Active Plex Streams – See who’s watching and what they’re watching.
 - Custom Sensor Count – Choose how many active streams to display.
 - Adjustable Scan Interval – Set how often HA updates stream data.
 - Detailed Session Attributes – Each active stream sensor provides:
@@ -20,6 +19,7 @@ A custom integration for Home Assistant that allows you to monitor active Plex s
     * :bust_in_silhouette: **User** (Who is watching)
     * :earth_africa: **IP Address & Device**
     * :tv: **Playback Progress & Quality**
+    * And so much more!
 
 
  - **Kill All Active Streams:**  
