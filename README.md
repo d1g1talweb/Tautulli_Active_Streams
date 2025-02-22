@@ -73,7 +73,6 @@ Dynamically displays active Plex sessions using **Tautulli** data fetched by the
 3. **Copy the YAML below** into your Lovelace dashboard. 
 4. **Enjoy real-time Plex session monitoring!** 🎬🔥
 
----
 
 <details>
 <summary>Card YAML - Last updated 18.02.2025</summary>
