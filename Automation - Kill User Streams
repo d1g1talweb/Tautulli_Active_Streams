@@ -1,0 +1,17 @@
+alias: Tautulli Active Streams - Kill Streams - for john_smith
+description: Kill All Streams For John Smith
+triggers:
+  - trigger: template
+    value_template: |-
+      {{ states.sensor
+         | selectattr('entity_id','contains','plex_session')
+         | selectattr('attributes.user','equalto','john_smith')
+         | list
+         | length > 0 }}
+    alias: Trigger Plex Session - john_smith
+actions:
+  - action: tautulli_active_streams.kill_user_stream
+    data:
+      user: john_smith
+      message: Stream has been stopped by Admin. Contact for Support
+mode: single
