@@ -21,6 +21,49 @@ A custom integration for Home Assistant that allows you to monitor active Plex s
     * :earth_africa: **IP Address & Device**
     * :tv: **Playback Progress & Quality**
 
+
+ - **Kill All Active Streams:**  
+   A new service that terminates every active stream, regardless of the user.
+ - **Kill Active Streams by Username:**  
+   A new service that terminates all streams associated with a specified username.
+
+<details>
+<summary>🛠️  How to Use the Services in Home Assistant</summary>
+ 
+<br>
+
+ 
+### 1️⃣ Kill All Active Streams
+Call the service from Developer Tools → Actions:
+
+```
+service: tautulli_active_streams.kill_all_streams
+data:
+  message: "Your Message Here"
+```
+---
+### 2️⃣ Kill Streams for a Specific User
+Call the service for a specific user:
+
+```
+service: tautulli_active_streams.kill_user_stream
+data:
+  user: "john_doe"
+  message: "Your Message Here."
+```
+
+</pre>
+</details>
+
+These new features are designed to work seamlessly with automations and will become even more powerful as additional data becomes available in future updates.
+
+
+
+
+---
+
+
+
 ---
 ![Tautulli Active Streams - Card - Short](https://github.com/user-attachments/assets/451a6abf-4bd4-414d-bfd1-28be0f272734)
 ---
