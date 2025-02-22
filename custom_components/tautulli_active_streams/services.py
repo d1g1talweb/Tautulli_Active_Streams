@@ -16,6 +16,12 @@ KILL_USER_SCHEMA = vol.Schema({
     vol.Optional("message", default="Stream ended by admin."): cv.string,
 })
 
+KILL_SESSION_SCHEMA = vol.Schema({
+    vol.Required("session_id"): cv.string,
+    vol.Optional("message", default="Stream ended by admin."): cv.string,
+})
+
+
 async def async_setup_kill_stream_services(hass: HomeAssistant, entry, api) -> None:
     """Register kill stream services for Tautulli Active Streams."""
     _LOGGER.debug("Starting async_setup_kill_stream_services")
@@ -74,6 +80,30 @@ async def async_setup_kill_stream_services(hass: HomeAssistant, entry, api) -> N
         success_count = sum(1 for res in results if not isinstance(res, Exception))
         _LOGGER.info("Successfully terminated %d out of %d sessions for user '%s'.", success_count, len(matched_sessions), target_user)
 
+
+    async def handle_kill_session_stream(call: ServiceCall) -> None:
+        _LOGGER.debug("kill_session_stream called with data: %s", call.data)
+        session_id = call.data["session_id"].strip()
+        message = call.data.get("message", "Stream ended by admin.")
+        
+        # Optionally check if the session_id is in active sessions:
+        coordinator = hass.data[DOMAIN].get(entry.entry_id)
+        if not coordinator or "sessions" not in coordinator.data:
+            _LOGGER.debug("No active sessions found (kill_session_stream).")
+            return
+    
+        sessions = coordinator.data.get("sessions", [])
+        if session_id not in [s.get("session_id") for s in sessions]:
+            _LOGGER.warning("Session %s not found in active sessions", session_id)
+            # You might choose to continue anyway or return here.
+        
+        try:
+            result = await api.terminate_session(session_id=session_id, message=message)
+            _LOGGER.info("Terminated session %s", session_id)
+        except Exception as err:
+            _LOGGER.error("Error terminating session %s: %s", session_id, err)
+
+    
     try:
         hass.services.async_register(DOMAIN, "kill_all_streams", handle_kill_all_streams, schema=KILL_ALL_SCHEMA)
         _LOGGER.debug("Registered service kill_all_streams")
@@ -85,5 +115,11 @@ async def async_setup_kill_stream_services(hass: HomeAssistant, entry, api) -> N
         _LOGGER.debug("Registered service kill_user_stream")
     except Exception as exc:
         _LOGGER.error("Error registering kill_user_stream: %s", exc, exc_info=True)
+        
+    try:
+        hass.services.async_register(DOMAIN, "kill_session_stream", handle_kill_session_stream, schema=KILL_SESSION_SCHEMA)
+        _LOGGER.debug("Registered service kill_session_stream")
+    except Exception as exc:
+        _LOGGER.error("Error registering kill_session_stream: %s", exc, exc_info=True)
 
     _LOGGER.debug("async_setup_kill_stream_services completed successfully")
