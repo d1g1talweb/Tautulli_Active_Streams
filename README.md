@@ -21,12 +21,15 @@ A custom integration for Home Assistant that allows you to monitor active Plex s
     * :tv: **Playback Progress & Quality**
     * And so much more!
 
+--- 
 
  - **Kill All Active Streams:**  
    A new service that terminates every active stream, regardless of the user.
  - **Kill Active Streams by Username:**  
    A new service that terminates all streams associated with a specified username.
-
+ - **Kill Active Streams by Session:**  
+   A new service that terminates a Single stream.
+   
 <details>
 <summary>🛠️  How to Use the Kill Stream Services</summary>
  
