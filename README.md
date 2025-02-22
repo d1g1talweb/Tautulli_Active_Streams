@@ -31,7 +31,7 @@ A custom integration for Home Assistant that allows you to monitor active Plex s
    A new service that terminates a Single stream.
    
 <details>
-<summary>🛠️  How to Use the Kill Stream Services</summary>
+<summary>➡️ Click Here  🛠️  How to Use the Kill Stream Services</summary>
  
 <br>
 Check Attributes in "plex_session_" for "user" or "session_id"
@@ -132,7 +132,7 @@ Dynamically displays active Plex sessions using **Tautulli** data fetched by the
 <br>
 
 <details>
-<summary>Card YAML - Last updated 22.02.2025</summary>
+<summary>➡️ Click Here  Card YAML - Last updated 22.02.2025</summary>
 <br><br> 
  
 ```
