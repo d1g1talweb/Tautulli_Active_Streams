@@ -144,6 +144,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                     "user_friendly_name": session.get("friendly_name"),
                     "username": session.get("username"),
                     "user_thumb": session.get("user_thumb"),
+                    "session_id": session.get("session_id"),
                     "container": session.get("container"),
                     "aspect_ratio": session.get("aspect_ratio"),
                     "video_codec": session.get("video_codec"),
