@@ -28,10 +28,11 @@ A custom integration for Home Assistant that allows you to monitor active Plex s
    A new service that terminates all streams associated with a specified username.
 
 <details>
-<summary>🛠️  How to Use the Services in Home Assistant</summary>
+<summary>🛠️  How to Use the Kill Stream Services</summary>
  
 <br>
-
+Check Attributes in "plex_session_" for "user" or "session_id"
+<br>
  
 ### 1️⃣ Kill All Active Streams
 Call the service from Developer Tools → Actions:
@@ -49,6 +50,16 @@ Call the service for a specific user:
 service: tautulli_active_streams.kill_user_stream
 data:
   user: "john_doe"
+  message: "Your Message Here."
+```
+---
+### 2️⃣ Kill Streams for a Specific Session
+Call the service for a specific user:
+
+```
+service: tautulli_active_streams.kill_session_stream
+data:
+  session_id: "gxvzdoq4fjkjfmduq5dgf25hz"
   message: "Your Message Here."
 ```
 
@@ -118,7 +129,7 @@ Dynamically displays active Plex sessions using **Tautulli** data fetched by the
 <br>
 
 <details>
-<summary>Card YAML - Last updated 18.02.2025</summary>
+<summary>Card YAML - Last updated 22.02.2025</summary>
 <br><br> 
  
 ```
@@ -129,7 +140,7 @@ filter:
     - state: unavailable
     - state: "off"
   include:
-    - entity_id: "*plex_session*"
+    - entity_id: "*plex_session_*"
       options:
         entity: this.entity_id
         type: custom:button-card
