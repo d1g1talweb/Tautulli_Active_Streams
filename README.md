@@ -132,7 +132,7 @@ Dynamically displays active Plex sessions using **Tautulli** data fetched by the
 <br>
 
 <details>
-<summary>➡️ Click Here  Card YAML - Last updated 22.02.2025</summary>
+<summary>➡️ Click Here  Card YAML - Last updated 23.02.2025</summary>
 <br><br> 
  
 ```
@@ -142,6 +142,7 @@ filter:
     - state: unknown
     - state: unavailable
     - state: "off"
+    - state: "on"
   include:
     - entity_id: "*plex_session_*"
       options:
