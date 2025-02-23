@@ -1,31 +1,37 @@
-##################################################################
+
+##################################################################################
+#
+# This automation monitors a specific user ("CHANGE_ME") to ensure
+# they cannot run Any sessions. If Any session start
+# by "CHANGE_ME" is found, it terminates the session.
+#
+##################################################################################
 # Automation Title:
 #   Tautulli Kill Streams - Limit All Users to One Session
-##################################################################
+##################################################################################
 #
+#  WARNING!!    Use Conditions to Exclude Users 
+#  WARNING!!   "user" Must be in lowercase!
 #
-# Use Conditions to Exclude Users 
-#
-##################################################################
-
+##################################################################################
 
 alias: Tautulli Kill Duplicate Plex Streams (Username)
 description: >
   Terminates the newest stream when a user has multiple active sessions, based
   on 'username' and 'start_time_raw'.
 
-##################################################################
+##################################################################################
 # Trigger:
 #   Monitors changes in sensor.tautulli_stream_count.
-##################################################################
+##################################################################################
 triggers:
   - entity_id: sensor.tautulli_stream_count
     trigger: state
 
-##################################################################
+##################################################################################
 # Condition:
 #   Validates whether a duplicate username is present in the 'sessions' attribute.
-##################################################################
+##################################################################################
 conditions:
   - condition: template
     value_template: >
@@ -49,15 +55,15 @@ conditions:
 
 
 
-##################################################################
+##################################################################################
 # Actions:
 #   1) Provide a persistent notification with session details
 #   2) Terminate the newest duplicate session.
-##################################################################
+##################################################################################
 actions:
-  ####################################################################
+  ################################################################################
   # 1) Persistent Notification: Lists any detected duplicate sessions.
-  ####################################################################
+  ################################################################################
   - data:
       title: Duplicate Plex Sessions Detected
       message: >
@@ -91,9 +97,9 @@ actions:
         {% endif %}
     action: persistent_notification.create
 
-  #####################################################################
+  ################################################################################
   # 2) Terminate the Newest Duplicate Session
-  #####################################################################
+  ################################################################################
   - data:
       session_id: >
         {% set sessions = state_attr('sensor.tautulli_stream_count','sessions')
@@ -123,3 +129,8 @@ actions:
         Admin Notified! Multiple sessions Detected. Terminated Stream.
     action: tautulli_active_streams.kill_session_stream
 mode: single
+##################################################################################
+#  
+#      please give our repo a like :)
+#    
+##################################################################################
