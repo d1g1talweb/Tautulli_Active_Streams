@@ -1,21 +1,77 @@
 import logging
 import asyncio
+import time
 from datetime import timedelta
+from datetime import datetime
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.const import CONF_URL, CONF_API_KEY, CONF_SCAN_INTERVAL, CONF_VERIFY_SSL
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import entity_registry as er
+
 from .views import TautulliImageView
 from .const import DOMAIN, DEFAULT_SCAN_INTERVAL, DEFAULT_SESSION_COUNT
-from .api import TautulliAPI 
+from .api import TautulliAPI
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["sensor"]
-
 DEFAULT_SESSION_SENSORS = DEFAULT_SESSION_COUNT
+
+
+class TautulliCoordinator(DataUpdateCoordinator):
+    """Custom Coordinator to fetch from Tautulli and track session start times."""
+
+    def __init__(self, hass: HomeAssistant, logger, api: TautulliAPI, update_interval: timedelta):
+        """Initialize the coordinator."""
+        super().__init__(
+            hass,
+            logger,
+            name=DOMAIN,
+            update_interval=update_interval,
+        )
+        self.api = api
+        # Dictionary of session_id -> float(timestamp) for first time we saw that session
+        self.start_times = {}
+
+    async def _async_update_data(self):
+        """Fetch data from Tautulli API and track session start times."""
+        try:
+            data = await self.api.get_activity()  # {"sessions": [...], "diagnostics": {...}}
+        except Exception as err:
+            _LOGGER.warning("Failed to update Tautulli data: %s", err)
+            data = {}
+
+        sessions = data.get("sessions", [])
+        now = time.time()
+
+        # Build a set of current session_ids
+        current_ids = set()
+        for s in sessions:
+            sid = s.get("session_id")
+            if sid:
+                current_ids.add(sid)
+                # If it's a new session, store the time we first saw it
+                if sid not in self.start_times:
+                    self.start_times[sid] = now
+
+        # Clean up any old sessions that disappeared
+        for old_sid in list(self.start_times.keys()):
+            if old_sid not in current_ids:
+                del self.start_times[old_sid]
+
+        # Attach the tracked start time and a 24-hour clock string
+        for s in sessions:
+            sid = s.get("session_id")
+            if sid in self.start_times:
+                raw_ts = self.start_times[sid]
+                s["start_time_raw"] = raw_ts
+                dt = datetime.fromtimestamp(raw_ts)
+                s["start_time"] = dt.strftime("%H:%M:%S")
+
+        return data
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tautulli Active Streams integration."""
@@ -33,28 +89,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.http.register_view(TautulliImageView)
     # -------------------------
 
-    async def async_update_data():
-        """Fetch data from Tautulli API (silently ignore failures)."""
-        try:
-            data = await api.get_activity()
-            return data if data else {}
-        except Exception:
-            return {}
-
-    coordinator = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name=DOMAIN,
-        update_method=async_update_data,
-        update_interval=timedelta(seconds=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)),
+    # Build our new custom coordinator
+    update_interval = timedelta(seconds=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+    coordinator = TautulliCoordinator(
+        hass=hass,
+        logger=_LOGGER,
+        api=api,
+        update_interval=update_interval
     )
 
+    # Run the first update to populate data
     await coordinator.async_config_entry_first_refresh()
+
+    # Store the number of session sensors
     coordinator.sensor_count = entry.options.get("num_sensors", DEFAULT_SESSION_SENSORS)
+
+    # Save coordinator in hass.data
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
+    # Forward entry setups
     try:
-        # Shield the forward_entry_setups call from external cancellations.
         await asyncio.shield(hass.config_entries.async_forward_entry_setups(entry, PLATFORMS))
     except asyncio.CancelledError:
         _LOGGER.error("Setup of sensor platforms was cancelled")
@@ -63,15 +117,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Error forwarding entry setups: %s", ex)
         return False
 
+    # Register kill stream services
     try:
         from .services import async_setup_kill_stream_services
         await async_setup_kill_stream_services(hass, entry, api)
     except Exception as exc:
         _LOGGER.error("Exception during kill stream service registration: %s", exc, exc_info=True)
 
-
     entry.async_on_unload(entry.add_update_listener(async_update_options))
     return True
+
 
 async def async_remove_extra_session_sensors(hass: HomeAssistant, entry: ConfigEntry):
     """Remove extra session sensor entities that exceed the new configuration."""
