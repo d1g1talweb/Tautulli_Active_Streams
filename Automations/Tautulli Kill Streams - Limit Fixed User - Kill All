@@ -3,11 +3,14 @@
 # Automation Title:
 #   Tautulli Kill Streams - All Streams for a Single User
 #############################################################################
-
+#
+#   # CHANGE_ME   - Dont forget to change these!
+#
+#############################################################################
 
 alias: Tautulli Kill Streams - Limit Fixed User - Kill All
 description: >
-  Terminates all Plex streams for "john_smith" whenever sensor.tautulli_stream_count changes.
+  Terminates all Plex streams for "CHANGE_ME" whenever sensor.tautulli_stream_count changes.
 
 #############################################################################
 # Trigger:
@@ -31,7 +34,7 @@ condition:
       {% else %}
         {% set ns = namespace(found=false) %}
         {% for s in sessions %}
-          {% if s.username is defined and s.username|lower|trim == 'john_smith' %}   # CHANGE USER NAME
+          {% if s.username is defined and s.username|lower|trim == 'CHANGE_ME' %}
             {% set ns.found = true %}
           {% endif %}
         {% endfor %}
@@ -45,7 +48,7 @@ condition:
 action:
   - service: tautulli_active_streams.kill_user_stream
     data:
-      user: "john_smith"    # CHANGE USER NAME
+      user: "CHANGE_ME"
       message: "Stream has been stopped by Admin. Contact for Support"
 
 mode: single
