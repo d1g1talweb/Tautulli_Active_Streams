@@ -5,7 +5,7 @@
 ########################################################################
 # 
 
-alias: Tautulli Kill Streams - Two Plex-Sessions Detected -  john_smith - Kill Last Session
+alias: Tautulli Kill Streams - Limit Fixed User - Single Stream!
 description: >
   Triggers when exactly two plex_session sensors belong to user=john_smith, then
   grabs the most recently updated sensor's session_id.
