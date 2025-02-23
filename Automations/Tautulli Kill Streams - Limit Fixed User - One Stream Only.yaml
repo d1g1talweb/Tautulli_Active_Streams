@@ -1,38 +1,38 @@
 
-###############################################################################
+##################################################################################
 #
 # This automation monitors a specific user ("CHANGE_ME") to ensure
 # they cannot run multiple simultaneous sessions. If more than one session
 # by "CHANGE_ME" is found, it terminates the newest session.
 #
-###############################################################################
+##################################################################################
 # Automation Title:
 #   Tautulli Kill Streams - Limit Fixed User - One Stream Only
-###############################################################################
+##################################################################################
 #
 #  WARNING!!   "user" Must be in lowercase!
 #
 #  WARNING!!    Dont forget to change these!   "CHANGE_ME"
 #
-#############################################################################
+##################################################################################
 
 alias: Tautulli Kill Streams - Limit Fixed User - One Stream Only
 description: >
   Monitors sensor.tautulli_stream_count for the user "CHANGE_ME".
   If that user has more than one active session, the newest session is terminated.
 
-###############################################################################
+##################################################################################
 # Trigger:
 #   Fires whenever sensor.tautulli_stream_count changes its main state.
-###############################################################################
+##################################################################################
 trigger:
   - platform: state
     entity_id: sensor.tautulli_stream_count
 
-###############################################################################
+##################################################################################
 # Condition:
 #   Checks whether "CHANGE_ME" has >= 2 sessions in the 'sessions' attribute.
-###############################################################################
+##################################################################################
 condition:
   - condition: template
     value_template: >-
@@ -47,15 +47,15 @@ condition:
         {{ matched|length >= 2 }}
       {% endif %}
 
-###############################################################################
+##################################################################################
 # Actions:
 #   1) Send a notification listing the user's sessions.
 #   2) Terminate the newest session if user has multiple sessions.
-###############################################################################
+##################################################################################
 action:
-  ###########################################################################
+  ################################################################################
   # 1) Persistent Notification: Details the user's current sessions.
-  ###########################################################################
+  ################################################################################
   - service: persistent_notification.create
     data:
       title: "Duplicate Sessions Detected for CHANGE_ME"
@@ -80,9 +80,9 @@ action:
           No session data available.
         {% endif %}
 
-  ###########################################################################
+  ################################################################################
   # 2) Terminate the Newest Session for User
-  ###########################################################################
+  ################################################################################
   - service: tautulli_active_streams.kill_session_stream
     data:
       session_id: >-
