@@ -1,4 +1,4 @@
-# Tautulli Active Streams Integration for Home Assistant
+# Tautulli Active Streams - Integration for Home Assistant
 
  ## ⭐ Like This Integration? 
  ``` If you find the **Tautulli Active Streams** integration helpful, please take a moment to give it a ⭐ on [GitHub] Your feedback and support help improve the project and motivate further development. Thanks! 🚀 ```
