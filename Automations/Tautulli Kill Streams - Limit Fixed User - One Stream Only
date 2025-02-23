@@ -1,0 +1,99 @@
+###############################################################################
+# Automation Title:
+#   Tautulli Kill Streams - Limit Fixed User - One Stream Only
+###############################################################################
+#
+# This automation monitors a specific user ("CHANGE_ME") to ensure
+# they cannot run multiple simultaneous sessions. If more than one session
+# by "CHANGE_ME" is found, it terminates the newest session.
+#
+###############################################################################
+
+alias: Tautulli Kill Streams - Limit Fixed User - One Stream Only
+description: >
+  Monitors sensor.tautulli_stream_count for the user "CHANGE_ME".
+  If that user has more than one active session, the newest session is terminated.
+
+###############################################################################
+# Trigger:
+#   Fires whenever sensor.tautulli_stream_count changes its main state.
+###############################################################################
+trigger:
+  - platform: state
+    entity_id: sensor.tautulli_stream_count
+
+###############################################################################
+# Condition:
+#   Checks whether "CHANGE_ME" has >= 2 sessions in the 'sessions' attribute.
+###############################################################################
+condition:
+  - condition: template
+    value_template: >-
+      {% set sessions = state_attr('sensor.tautulli_stream_count', 'sessions') %}
+      {% if sessions is none or sessions|length < 2 %}
+        false
+      {% else %}
+        {% set matched = sessions
+           | selectattr('username','defined')
+           | selectattr('username','equalto','CHANGE_ME')
+           | list %}
+        {{ matched|length >= 2 }}
+      {% endif %}
+
+###############################################################################
+# Actions:
+#   1) Send a notification listing the user's sessions.
+#   2) Terminate the newest session if user has multiple sessions.
+###############################################################################
+action:
+  ###########################################################################
+  # 1) Persistent Notification: Details the user's current sessions.
+  ###########################################################################
+  - service: persistent_notification.create
+    data:
+      title: "Duplicate Sessions Detected for CHANGE_ME"
+      message: >-
+        {% set sessions = state_attr('sensor.tautulli_stream_count','sessions') %}
+        {% if sessions is not none %}
+          {% set matched = sessions
+             | selectattr('username','defined')
+             | selectattr('username','equalto','CHANGE_ME')
+             | list %}
+          {% if matched|length >= 2 %}
+            Found {{ matched|length }} sessions for CHANGE_ME:<br><br>
+            {% for s in matched %}
+            - Session ID: {{ s.session_id }}<br>
+              Title: {{ s.full_title }}<br>
+              start_time_raw: {{ s.start_time_raw }}<br><br>
+            {% endfor %}
+          {% else %}
+            No duplicates found.
+          {% endif %}
+        {% else %}
+          No session data available.
+        {% endif %}
+
+  ###########################################################################
+  # 2) Terminate the Newest Session for User
+  ###########################################################################
+  - service: tautulli_active_streams.kill_session_stream
+    data:
+      session_id: >-
+        {% set sessions = state_attr('sensor.tautulli_stream_count','sessions') %}
+        {% if sessions is not none %}
+          {% set matched = sessions
+             | selectattr('username','defined')
+             | selectattr('username','equalto','CHANGE_ME')
+             | sort(attribute='start_time_raw') 
+             | list %}
+          {% if matched|length >= 2 %}
+            {{ matched[-1].session_id }}
+          {% else %}
+            unknown
+          {% endif %}
+        {% else %}
+          unknown
+        {% endif %}
+      message: "Admin Notice: Exceeded the one-session limit. Terminating newest session."
+
+mode: single
