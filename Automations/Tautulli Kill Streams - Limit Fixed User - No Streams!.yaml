@@ -1,5 +1,11 @@
 
-#############################################################################
+###############################################################################
+#
+# This automation monitors a specific user ("CHANGE_ME") to ensure
+# they cannot run Any sessions. If Any session start
+# by "CHANGE_ME" is found, it terminates the session.
+#
+###############################################################################
 # Automation Title:
 #   Tautulli Kill Streams - All Streams for a Single User
 #############################################################################
