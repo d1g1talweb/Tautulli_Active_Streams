@@ -5,7 +5,7 @@
 #############################################################################
 
 
-alias: Tautulli Kill Streams - Single Fixed User
+alias: Tautulli Kill Streams - Limit Fixed User - Kill All
 description: >
   Terminates all Plex streams for "john_smith" whenever sensor.tautulli_stream_count changes.
 
