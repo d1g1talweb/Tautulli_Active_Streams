@@ -12,7 +12,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     num_sensors = entry.options.get("num_sensors", DEFAULT_SESSION_COUNT)
     entities = [TautulliStreamSensor(coordinator, entry, i) for i in range(num_sensors)]
-    
+
     diagnostic_sensors = [
         TautulliDiagnosticSensor(coordinator, entry, "stream_count"),
         TautulliDiagnosticSensor(coordinator, entry, "stream_count_direct_play"),
@@ -145,6 +145,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                     "username": session.get("username"),
                     "user_thumb": session.get("user_thumb"),
                     "session_id": session.get("session_id"),
+                    "start_time_raw": session.get("start_time_raw"),
                     "container": session.get("container"),
                     "aspect_ratio": session.get("aspect_ratio"),
                     "video_codec": session.get("video_codec"),
@@ -172,6 +173,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                     "transcode_progress": session.get("transcode_progress"),
                     "transcode_speed": session.get("transcode_speed"),
                     "stream_container": session.get("stream_container"),
+                    "stream_start_time": session.get("start_time"),
                     "stream_duration": formatted_duration,
                     "stream_remaining": formatted_remaining,
                     "stream_bitrate": session.get("stream_bitrate"),
@@ -201,6 +203,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             "model": "Tautulli Active Streams",
             "entry_type": "service",
         }
+    
 
 class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Tautulli diagnostic sensor."""
@@ -215,18 +218,49 @@ class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = f"{metric.replace('_', ' ').title()}" 
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_device_info = self.device_info
-        
+
     @property
     def state(self):
-        """Return the state of the diagnostic sensor."""
+        """Return the main numeric diagnostic value (for example, stream_count)."""
         diagnostics = self.coordinator.data.get("diagnostics", {})
         return diagnostics.get(self._metric, 0)
         
     @property
+    def extra_state_attributes(self):
+        """
+        If this sensor is for 'stream_count', also attach a 
+        'sessions' attribute listing each active session.
+        Otherwise, return an empty dict or any additional 
+        diagnostic info you like.
+        """
+        # If it's not the 'stream_count' metric, we can simply return {}
+        # or include the raw 'diagnostics' data if you want.
+        if self._metric != "stream_count":
+            return {}
+
+        # For 'stream_count', let's attach the session list
+        sessions = self.coordinator.data.get("sessions", [])
+        filtered_sessions = []
+
+        for session in sessions:
+            filtered_sessions.append({
+                "username": (session.get("username") or "").lower(),
+                "user": (session.get("user") or "").lower(),
+                "full_title": session.get("full_title"),
+                "start_time_raw": session.get("start_time_raw"),
+                "session_id": session.get("session_id"),
+            })
+
+        # Return a dict containing "sessions" under extra_state_attributes
+        return {
+            "sessions": filtered_sessions
+        }
+
+    @property
     def icon(self):
         """Return an icon based on the sensor type."""
         icon_map = {
-            "stream_count": "mdi:plex",  # Streaming count
+            "stream_count": "mdi:plex",  
             "stream_count_direct_play": "mdi:play-circle",
             "stream_count_direct_stream": "mdi:play-network",
             "stream_count_transcode": "mdi:cog",
@@ -235,7 +269,7 @@ class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
             "wan_bandwidth": "mdi:wan",
         }
         return icon_map.get(self._metric, "mdi:chart-bar") 
-        
+
     @property
     def device_info(self):
         """Ensure diagnostic sensors are grouped under the same device."""
