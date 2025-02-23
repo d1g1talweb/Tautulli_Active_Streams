@@ -1,5 +1,6 @@
 ########################################################################
 # Automation to Limit User to only One Session at anytime.
+# Kill Streams - Limit Single User to One Session
 # Kill the Newest Stream by User. Blocking Users from Multiple Sessions
 ########################################################################
 # 
