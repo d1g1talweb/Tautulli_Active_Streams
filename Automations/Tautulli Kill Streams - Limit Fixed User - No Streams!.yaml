@@ -1,38 +1,38 @@
 
-#############################################################################
+##################################################################################
 #
 # This automation monitors a specific user ("CHANGE_ME") to ensure
 # they cannot run Any sessions. If Any session start
 # by "CHANGE_ME" is found, it terminates the session.
 #
-#############################################################################
+##################################################################################
 # Automation Title:
 #   Tautulli Kill Streams - All Streams for a Single User
-#############################################################################
+##################################################################################
 #
 #  WARNING!!   "user" Must be in lowercase!
 #
 #  WARNING!!    Dont forget to change these!   "CHANGE_ME"
 #
-#############################################################################
+##################################################################################
 
 alias: Tautulli Kill Streams - Limit Fixed User - Kill All
 description: >
   Terminates all Plex streams for "CHANGE_ME" whenever sensor.tautulli_stream_count changes.
 
-#############################################################################
+##################################################################################
 # Trigger:
 #   Observes state changes in sensor.tautulli_stream_count.
-#############################################################################
+##################################################################################
 trigger:
   - platform: state
     entity_id: sensor.tautulli_stream_count
 
-#############################################################################
+##################################################################################
 # Condition:
 #   Checks if "john_smith" appears in the sensor's 'sessions' attribute, 
 #   using a namespace to properly detect matches.
-#############################################################################
+##################################################################################
 condition:
   - condition: template
     value_template: >-
@@ -49,10 +49,10 @@ condition:
         {{ ns.found }}
       {% endif %}
 
-#############################################################################
+##################################################################################
 # Action:
 #   Invokes 'kill_user_stream' to forcibly end all streams for "john_smith".
-#############################################################################
+##################################################################################
 action:
   - service: tautulli_active_streams.kill_user_stream
     data:
