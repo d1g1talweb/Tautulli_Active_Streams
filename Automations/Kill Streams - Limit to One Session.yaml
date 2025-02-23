@@ -1,7 +1,7 @@
-#
+########################################################################
 # Automation to Limit User to only One Session at anytime.
 # Kill the Newest Stream by User. Blocking Users from Multiple Sessions
-#
+########################################################################
 # 
 
 alias: Tautulli Kill Streams - Two Plex-Sessions Detected -  john_smith - Kill Last Session
