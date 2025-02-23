@@ -1,0 +1,51 @@
+
+#############################################################################
+# Automation Title:
+#   Tautulli Kill Streams - All Streams for a Single User
+#############################################################################
+
+
+alias: Tautulli Kill Streams - Single Fixed User
+description: >
+  Terminates all Plex streams for "john_smith" whenever sensor.tautulli_stream_count changes.
+
+#############################################################################
+# Trigger:
+#   Observes state changes in sensor.tautulli_stream_count.
+#############################################################################
+trigger:
+  - platform: state
+    entity_id: sensor.tautulli_stream_count
+
+#############################################################################
+# Condition:
+#   Checks if "john_smith" appears in the sensor's 'sessions' attribute, 
+#   using a namespace to properly detect matches.
+#############################################################################
+condition:
+  - condition: template
+    value_template: >-
+      {% set sessions = state_attr('sensor.tautulli_stream_count','sessions') %}
+      {% if sessions is none or sessions|length == 0 %}
+        false
+      {% else %}
+        {% set ns = namespace(found=false) %}
+        {% for s in sessions %}
+          {% if s.username is defined and s.username|lower|trim == 'john_smith' %}   # CHANGE USER NAME
+            {% set ns.found = true %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.found }}
+      {% endif %}
+
+#############################################################################
+# Action:
+#   Invokes 'kill_user_stream' to forcibly end all streams for "john_smith".
+#############################################################################
+action:
+  - service: tautulli_active_streams.kill_user_stream
+    data:
+      user: "john_smith"    # CHANGE USER NAME
+      message: "Stream has been stopped by Admin. Contact for Support"
+
+mode: single
