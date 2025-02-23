@@ -102,5 +102,9 @@ action:
           unknown
         {% endif %}
       message: "Admin Notice: Exceeded the one-session limit. Terminating newest session."
-
 mode: single
+##################################################################################
+#  
+#      please give our repo a like :)
+#    
+##################################################################################
