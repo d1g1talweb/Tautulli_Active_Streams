@@ -5,6 +5,7 @@
 #
 # Use Conditions to Exclude Users 
 #
+# Copy Full into Automation YAML all Comments will be removed
 ##################################################################
 
 
@@ -119,8 +120,6 @@ actions:
           {% endif %}
         {% endif %}
       message: >-
-        Multiple sessions found for the same user. Terminated the newest
-        session.
+        Admin Notified! Multiple sessions Detected. Terminated Stream.
     action: tautulli_active_streams.kill_session_stream
-    enabled: false
 mode: single
