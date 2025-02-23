@@ -58,7 +58,6 @@ action:
     data:
       user: "CHANGE_ME"
       message: "Stream has been stopped by Admin. Contact for Support"
-
 mode: single
 ##################################################################################
 #  
