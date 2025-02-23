@@ -1,6 +1,4 @@
-###############################################################################
-# Automation Title:
-#   Tautulli Kill Streams - Limit Fixed User - One Stream Only
+
 ###############################################################################
 #
 # This automation monitors a specific user ("CHANGE_ME") to ensure
@@ -8,6 +6,15 @@
 # by "CHANGE_ME" is found, it terminates the newest session.
 #
 ###############################################################################
+# Automation Title:
+#   Tautulli Kill Streams - Limit Fixed User - One Stream Only
+###############################################################################
+#
+#  WARNING!!   "user" Must be in lowercase!
+#
+#  WARNING!!    Dont forget to change these!   "CHANGE_ME"
+#
+#############################################################################
 
 alias: Tautulli Kill Streams - Limit Fixed User - One Stream Only
 description: >
