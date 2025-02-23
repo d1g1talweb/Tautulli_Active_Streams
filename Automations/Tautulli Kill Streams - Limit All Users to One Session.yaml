@@ -1,0 +1,126 @@
+##################################################################
+# Automation Title:
+#   Tautulli Kill Streams - Limit All Users to One Session
+##################################################################
+#
+# Use Conditions to Exclude Users 
+#
+##################################################################
+
+
+alias: Tautulli Kill Duplicate Plex Streams (Username)
+description: >
+  Terminates the newest stream when a user has multiple active sessions, based
+  on 'username' and 'start_time_raw'.
+
+##################################################################
+# Trigger:
+#   Monitors changes in sensor.tautulli_stream_count.
+##################################################################
+triggers:
+  - entity_id: sensor.tautulli_stream_count
+    trigger: state
+
+##################################################################
+# Condition:
+#   Validates whether a duplicate username is present in the 'sessions' attribute.
+##################################################################
+conditions:
+  - condition: template
+    value_template: >
+      {% set sessions = state_attr('sensor.tautulli_stream_count','sessions') %}
+      {% if sessions is none or sessions|length <= 1 %}
+        false
+      {% else %}
+        {% set ns = namespace(duplicate_found=false, seen=[]) %}
+        {% for s in sessions %}
+          {% if s.username is defined and s.username|trim != '' %}
+            {% set user_lower = s.username|lower|trim %}
+            {% if user_lower in ns.seen %}
+              {% set ns.duplicate_found = true %}
+            {% else %}
+              {% set ns.seen = ns.seen + [user_lower] %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.duplicate_found }}
+      {% endif %}
+
+
+
+##################################################################
+# Actions:
+#   1) Provide a persistent notification with session details
+#   2) Terminate the newest duplicate session.
+##################################################################
+actions:
+  ####################################################################
+  # 1) Persistent Notification: Lists any detected duplicate sessions.
+  ####################################################################
+  - data:
+      title: Duplicate Plex Sessions Detected
+      message: >
+        {% set sessions = state_attr('sensor.tautulli_stream_count','sessions')
+        %} {% if sessions is not none %}
+          {# Use a namespace to ensure our duplicates list persists #}
+          {% set ns = namespace(duplicates=[]) %}
+          {% set seen_users = namespace(list=[]) %}
+          
+          {# Gather duplicates #}
+          {% for s in sessions %}
+            {% if s.username is defined and s.username|trim != '' %}
+              {% set user_lower = s.username|lower|trim %}
+              {% if user_lower in seen_users.list %}
+                {% set ns.duplicates = ns.duplicates + [s] %}
+              {% else %}
+                {% set seen_users.list = seen_users.list + [user_lower] %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+          
+          Found {{ ns.duplicates|length }} duplicate session(s):<br><br>
+          {% for d in ns.duplicates %}
+          - Username: {{ d.username }}<br>
+            Session ID: {{ d.session_id }}<br>
+            Title: {{ d.full_title }}<br>
+            Start Time (raw): {{ d.start_time_raw }}<br><br>
+          {% endfor %}
+        {% else %}
+          No sessions found.
+        {% endif %}
+    action: persistent_notification.create
+
+  #####################################################################
+  # 2) Terminate the Newest Duplicate Session
+  #####################################################################
+  - data:
+      session_id: >
+        {% set sessions = state_attr('sensor.tautulli_stream_count','sessions')
+        %} {% if sessions is none %}
+          unknown
+        {% else %}
+          {% set ns = namespace(duplicates=[]) %}
+          {% set seen_users = namespace(list=[]) %}
+          {% for s in sessions %}
+            {% if s.username is defined and s.username|trim != '' %}
+              {% set user_lower = s.username|lower|trim %}
+              {% if user_lower in seen_users.list %}
+                {% set ns.duplicates = ns.duplicates + [s] %}
+              {% else %}
+                {% set seen_users.list = seen_users.list + [user_lower] %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+          {% if ns.duplicates|length > 0 %}
+            {% set sorted = ns.duplicates|sort(attribute='start_time_raw') %}
+            {{ sorted[-1].session_id }}
+          {% else %}
+            unknown
+          {% endif %}
+        {% endif %}
+      message: >-
+        Multiple sessions found for the same user. Terminated the newest
+        session.
+    action: tautulli_active_streams.kill_session_stream
+    enabled: false
+mode: single
