@@ -9,11 +9,9 @@
 # 1) Copy this YAML snippet into your Home Assistant automations.
 #    - If using "automations.yaml", paste it there.
 #    - If using the UI-based editor, switch to YAML mode and paste it.
-# 2) Adjust the 'excluded_users' list under 'variables:' to specify any users who
-#    can have multiple concurrent sessions without termination.
-# 3) Confirm that 'sensor.tautulli_stream_count' is the correct aggregator sensor
+# 2) Confirm that 'sensor.tautulli_stream_count' is the correct aggregator sensor
 #    in your setup. It must have 'sessions' containing 'user', 'session_id', etc.
-# 4) Reload or restart automations (Developer Tools → YAML → "Reload Automations")
+# 3) Reload or restart automations (Developer Tools → YAML → "Reload Automations")
 #    or from the UI, so that this new automation is active.
 #
 # What It Does:
