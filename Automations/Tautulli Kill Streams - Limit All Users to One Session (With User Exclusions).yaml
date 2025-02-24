@@ -38,8 +38,7 @@ variables:
   excluded_users:
     - admin
     - plex_admin
-    - plextardis_administrato
-
+    
 mode: single
 
 ##############################################################################
