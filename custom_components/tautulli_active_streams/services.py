@@ -56,7 +56,7 @@ async def async_setup_kill_stream_services(hass: HomeAssistant, entry, api) -> N
         message = call.data.get("message")
         coordinator = hass.data[DOMAIN].get(entry.entry_id)
         if not coordinator or "sessions" not in coordinator.data:
-            _LOGGER.debug("No active sessions found (kill_user_stream).")
+            _LOGGER.debug("No active sessions found (kill_user_streams).")
             return
         sessions = coordinator.data.get("sessions", [])
         matched_sessions = [
