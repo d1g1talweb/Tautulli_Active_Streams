@@ -1,18 +1,21 @@
 
 ##################################################################################
-#
-# This automation monitors a specific user ("CHANGE_ME") to ensure
-# they cannot run Any sessions. If Any session start
-# by "CHANGE_ME" is found, it terminates the session.
-#
-##################################################################################
-# Automation Title:
+# Automation Title:                                             Updated 24.02.2025    
 #   Tautulli Kill Streams - Limit All Users to One Session
 ##################################################################################
+# How to Use:
+# 1) Copy this YAML snippet into your Home Assistant automations (either 
+#    automations.yaml or the UI-based YAML editor).
+# 2) Ensure you have 'sensor.tautulli_stream_count' (or your chosen aggregator 
+#    sensor) that contains 'username', 'session_id', and other attributes.
+# 3) This automation will detect when any user has more than one session and kill 
+#    the newest.  
 #
-#  WARNING!!    Use Conditions to Exclude Users 
-#  WARNING!!   "user" Must be in lowercase!
-#
+# What It Does:
+# - Monitors changes to 'sensor.tautulli_stream_count'.
+# - Checks if any user (based on 'username') has multiple active sessions.
+# - Sends a persistent notification listing duplicates.
+# - Terminates the newest session for that user.
 ##################################################################################
 
 alias: Tautulli Kill Duplicate Plex Streams (Username)
