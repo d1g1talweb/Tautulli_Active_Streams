@@ -1,0 +1,95 @@
+##################################################################################
+# Automation Title:                                             Updated 24.02.2025
+#   Kill Paused Sessions After X Minutes
+#   
+##################################################################################
+# How to Use:
+# 1) Copy this entire YAML snippet into one of your Home Assistant automations:
+#    - If you use a dedicated "automations.yaml", paste it there.
+#    - If you use the UI-based automations editor, switch to YAML mode and paste.
+# 2) Update 'pause_limit_minutes' to your desired threshold (e.g. 10 -> kills sessions
+#    paused longer than 10 minutes).
+# 3) Ensure 'sensor.tautulli_stream_count' is the correct name of your aggregator sensor
+#    that contains the 'sessions' attribute, including "Stream_paused_duration_sec".
+# 4) Reload or restart your automations in Home Assistant, or click "Reload Automations"
+#    from Developer Tools → YAML in the UI.
+#
+# Once active, any Plex session reported by Tautulli as 'paused' beyond 'pause_limit_minutes'
+# is automatically terminated via 'tautulli_active_streams.kill_session_stream'.
+##################################################################################
+#
+##################################################################################
+alias: "Tautulli Kill Stream - Paused Sessions After X Minutes"
+description: >
+  Terminates any Plex session reported by Tautulli that has been paused longer
+  than a specified number of minutes (configurable in 'pause_limit_minutes').
+mode: single
+
+##################################################################################
+# 1) Variables:
+#   - 'pause_limit_minutes': The threshold beyond which paused sessions are killed.
+##################################################################################
+variables:
+  pause_limit_minutes: 10
+
+##################################################################################
+# 2) Trigger:
+#   - Runs every 1 minute to re-check paused durations.
+##################################################################################
+trigger:
+  - platform: time_pattern
+    minutes: "/1"
+
+##################################################################################
+# 3) Condition:
+#   - None by default, so it always runs every minute.
+##################################################################################
+condition: []
+
+##################################################################################
+# 4) Actions:
+#   A) Read aggregator data from sensor.tautulli_stream_count
+#   B) Loop over each session
+#   C) If paused beyond threshold, kill it
+##################################################################################
+action:
+  ########################################################################
+  # A) Fetch session data from aggregator sensor
+  ########################################################################
+  - variables:
+      sessions: "{{ state_attr('sensor.tautulli_stream_count','sessions') | default([]) }}"
+
+  ########################################################################
+  # B) Loop through each session
+  ########################################################################
+  - repeat:
+      for_each: "{{ sessions }}"
+      sequence:
+        ####################################################################
+        # i) Extract relevant fields for this session
+        ####################################################################
+        - variables:
+            this_session: "{{ repeat.item }}"
+            sid: "{{ this_session.session_id | default('unknown') }}"
+            paused_sec: "{{ this_session.Stream_paused_duration_sec | float(0) }}"
+            state: "{{ this_session.state | lower | default('unknown') }}"
+
+        ####################################################################
+        # ii) Check if paused & beyond threshold
+        ####################################################################
+        - if:
+            - condition: template
+              value_template: >
+                {{ state == 'paused'
+                   and paused_sec > (pause_limit_minutes * 60) 
+                   and sid != 'unknown' }}
+          then:
+            ################################################################
+            # iii) Call kill service
+            ################################################################
+            - service: tautulli_active_streams.kill_session_stream
+              data:
+                session_id: "{{ sid }}"
+                message: >
+                  Session paused more than {{ pause_limit_minutes }} minutes. 
+                  Terminating.
