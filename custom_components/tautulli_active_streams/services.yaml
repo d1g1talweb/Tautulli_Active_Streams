@@ -9,8 +9,8 @@ kill_all_streams:
       default: "Stream ended by admin."
       required: false
 
-kill_user_stream:
-  name: Kill User Stream
+kill_user_streams:
+  name: Kill User Streams
   description: Terminate all streams for a specific user.
   fields:
     user:
