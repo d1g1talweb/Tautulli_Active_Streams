@@ -1,19 +1,23 @@
-
 ##################################################################################
-#
-# This automation monitors a specific user ("CHANGE_ME") to ensure
-# they cannot run Any sessions. If Any session start
-# by "CHANGE_ME" is found, it terminates the session.
-#
-##################################################################################
-# Automation Title:
+# Automation Title:                                             Updated 24.02.2025
 #   Tautulli Kill Streams - All Streams for a Single User
 ##################################################################################
+# How to Use:
+# 1) Copy this YAML snippet into your Home Assistant automations.
+#    - If using "automations.yaml", paste it there.
+#    - If using the UI-based editor, switch to YAML mode and paste it.
+# 2) Adjust the 'excluded_users' list under 'variables:' to specify any users who
+#    can have multiple concurrent sessions without termination.
+# 3) Confirm that 'sensor.tautulli_stream_count' is the correct aggregator sensor
+#    in your setup. It must have 'sessions' containing 'user', 'session_id', etc.
+# 4) Reload or restart automations (Developer Tools → YAML → "Reload Automations")
+#    or from the UI, so that this new automation is active.
 #
-#  WARNING!!   "user" Must be in lowercase!
-#
-#  WARNING!!    Dont forget to change these!   "CHANGE_ME"
-#
+# What This Automation Does:
+# - Whenever 'sensor.tautulli_stream_count' changes, it checks if any session 
+#   belongs to the specified "CHANGE_ME" user.
+# - If so, it calls the Tautulli kill_user_stream service to terminate all 
+#   streams for that user.
 ##################################################################################
 
 alias: Tautulli Kill Streams - Limit Fixed User - Kill All
