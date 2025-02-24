@@ -50,8 +50,8 @@ async def async_setup_kill_stream_services(hass: HomeAssistant, entry, api) -> N
         success_count = sum(1 for res in results if not isinstance(res, Exception))
         _LOGGER.info("Terminated %d out of %d sessions successfully.", success_count, len(sessions))
 
-    async def handle_kill_user_stream(call: ServiceCall) -> None:
-        _LOGGER.debug("kill_user_stream called with data: %s", call.data)
+    async def handle_kill_user_streams(call: ServiceCall) -> None:
+        _LOGGER.debug("kill_user_streams called with data: %s", call.data)
         target_user = call.data["user"].strip().lower()
         message = call.data.get("message")
         coordinator = hass.data[DOMAIN].get(entry.entry_id)
@@ -111,10 +111,10 @@ async def async_setup_kill_stream_services(hass: HomeAssistant, entry, api) -> N
         _LOGGER.error("Error registering kill_all_streams: %s", exc, exc_info=True)
 
     try:
-        hass.services.async_register(DOMAIN, "kill_user_stream", handle_kill_user_stream, schema=KILL_USER_SCHEMA)
-        _LOGGER.debug("Registered service kill_user_stream")
+        hass.services.async_register(DOMAIN, "kill_user_streams", handle_kill_user_streams, schema=KILL_USER_SCHEMA)
+        _LOGGER.debug("Registered service kill_user_streams")
     except Exception as exc:
-        _LOGGER.error("Error registering kill_user_stream: %s", exc, exc_info=True)
+        _LOGGER.error("Error registering kill_user_streams: %s", exc, exc_info=True)
         
     try:
         hass.services.async_register(DOMAIN, "kill_session_stream", handle_kill_session_stream, schema=KILL_SESSION_SCHEMA)
