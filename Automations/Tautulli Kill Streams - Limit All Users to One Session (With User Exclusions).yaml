@@ -1,42 +1,40 @@
-##################################################################
+##############################################################################
 # Automation Title:
 #   Tautulli Kill Streams - Limit All Users to One Session (With User Exclusions)
-##################################################################
-#
-# This automation terminates the newest stream if any non-excluded user
-# has multiple active sessions. Users in the excluded list can have
-# unlimited sessions.
-#
-##################################################################
-
-alias: Tautulli Kill Streams - Limit All Users to One Session (With User Exclusions)
+#   
+##############################################################################
+alias: Tautulli Kill Streams - Limit All Users to One Session ( With User Exclusions)
 description: >
-  Terminates the newest stream for any duplicate sessions among non-excluded
-  users, based on 'user' and 'start_time_raw'.
+  Terminates the newest stream when any non-excluded user has multiple active
+  sessions, based on 'user' and 'start_time_raw'. Skips partial updates where
+  session_id is missing or empty, and allows excluded users to have multiple 
+  sessions without being terminated.
 
-##################################################################
+##############################################################################
 # Variables:
-#   A list of users you want to exclude from the single-session limit.
-##################################################################
+#   A list of users you do NOT want to limit or kill.
+##############################################################################
 variables:
   excluded_users:
     - admin
     - plex_admin
+    - plextardis_administrato
 
 mode: single
 
-##################################################################
+##############################################################################
 # Trigger:
-#   Fired whenever 'sensor.tautulli_stream_count' changes its main state.
-##################################################################
+#   Fires whenever 'sensor.tautulli_stream_count' changes its main state.
+##############################################################################
 trigger:
   - platform: state
     entity_id: sensor.tautulli_stream_count
 
-##################################################################
+##############################################################################
 # Condition:
-#   Checks for duplicate sessions among users not in 'excluded_users'.
-##################################################################
+#   Checks if there's more than one active session among non-excluded users,
+#   ignoring partial updates (sessions lacking a valid session_id).
+##############################################################################
 condition:
   - condition: template
     value_template: >-
@@ -46,7 +44,8 @@ condition:
       {% else %}
         {% set ns = namespace(duplicate_found=false, seen=[]) %}
         {% for s in sessions %}
-          {% if s.user is defined and s.user|trim != '' %}
+          {% if s.user is defined and s.user|trim != '' 
+                 and s.session_id is defined and s.session_id|trim != '' %}
             {% set user_lower = s.user|lower|trim %}
             {% if user_lower not in excluded_users %}
               {% if user_lower in ns.seen %}
@@ -60,25 +59,28 @@ condition:
         {{ ns.duplicate_found }}
       {% endif %}
 
-##################################################################
+##############################################################################
 # Actions:
-#   1) Provide a persistent notification with session details
-#   2) Terminate the newest duplicate session for non-excluded users
-##################################################################
+#   1) Provide a notification listing detected duplicates (excluding certain 
+#      users and ignoring sessions with no session_id).
+#   2) Terminate the newest duplicate session for non-excluded users.
+##############################################################################
 action:
-  ##################################################################
-  # 1) Persistent Notification: Lists detected duplicates (skipping excluded).
-  ##################################################################
+  ########################################################################
+  # 1) Persistent Notification: Lists any detected duplicates 
+  #    (skipping excluded users and partial updates).
+  ########################################################################
   - service: persistent_notification.create
     data:
-      title: "Duplicate Plex Sessions Detected (Some Users Excluded)"
+      title: "Duplicate Plex Sessions Detected"
       message: >-
         {% set sessions = state_attr('sensor.tautulli_stream_count','sessions') %}
         {% if sessions is not none %}
           {% set ns = namespace(duplicates=[]) %}
           {% set seen_users = namespace(list=[]) %}
           {% for s in sessions %}
-            {% if s.user is defined and s.user|trim != '' %}
+            {% if s.user is defined and s.user|trim != '' 
+                   and s.session_id is defined and s.session_id|trim != '' %}
               {% set user_lower = s.user|lower|trim %}
               {% if user_lower not in excluded_users %}
                 {% if user_lower in seen_users.list %}
@@ -89,20 +91,20 @@ action:
               {% endif %}
             {% endif %}
           {% endfor %}
-          Found {{ ns.duplicates|length }} duplicate session(s) among non-excluded users:<br><br>
+          Found {{ ns.duplicates|length }} duplicate session(s):<br><br>
           {% for d in ns.duplicates %}
           - User: {{ d.user }}<br>
             Session ID: {{ d.session_id }}<br>
             Title: {{ d.full_title }}<br>
-            start_time_raw: {{ d.start_time_raw }}<br><br>
+            start_time: {{ d.stream_start_time if d.stream_start_time is defined else 'unknown' }}<br><br>
           {% endfor %}
         {% else %}
           No sessions found.
         {% endif %}
-  
-  ##################################################################
-  # 2) Terminate the Newest Duplicate Session (non-excluded users)
-  ##################################################################
+
+  ########################################################################
+  # 2) Terminate the Newest Duplicate Session (non-excluded, valid session_id)
+  ########################################################################
   - service: tautulli_active_streams.kill_session_stream
     data:
       session_id: >-
@@ -113,7 +115,8 @@ action:
           {% set ns = namespace(duplicates=[]) %}
           {% set seen_users = namespace(list=[]) %}
           {% for s in sessions %}
-            {% if s.user is defined and s.user|trim != '' %}
+            {% if s.user is defined and s.user|trim != '' 
+                   and s.session_id is defined and s.session_id|trim != '' %}
               {% set user_lower = s.user|lower|trim %}
               {% if user_lower not in excluded_users %}
                 {% if user_lower in seen_users.list %}
@@ -131,4 +134,4 @@ action:
             unknown
           {% endif %}
         {% endif %}
-      message: "Admin Notified! Multiple sessions detected. Terminated newest session."
+      message: "Admin Notified! Multiple sessions detected. Session Terminated."
