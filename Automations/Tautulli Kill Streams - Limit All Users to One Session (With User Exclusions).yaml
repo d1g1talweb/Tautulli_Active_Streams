@@ -1,8 +1,26 @@
-##############################################################################
-# Automation Title:
+##################################################################################
+# Automation Title:                                             Updated 24.02.2025
 #   Tautulli Kill Streams - Limit All Users to One Session (With User Exclusions)
 #   
-##############################################################################
+##################################################################################
+##################################################################################
+# How to Use:
+# 1) Copy this YAML snippet into your Home Assistant automations.
+#    - If using "automations.yaml", paste it there.
+#    - If using the UI-based editor, switch to YAML mode and paste it.
+# 2) Adjust the 'excluded_users' list under 'variables:' to specify any users who
+#    can have multiple concurrent sessions without termination.
+# 3) Confirm that 'sensor.tautulli_stream_count' is the correct aggregator sensor
+#    in your setup. It must have 'sessions' containing 'user', 'session_id', etc.
+# 4) Reload or restart automations (Developer Tools → YAML → "Reload Automations")
+#    or from the UI, so that this new automation is active.
+#
+# What It Does:
+# - Whenever 'sensor.tautulli_stream_count' changes state, this automation checks
+#   for duplicate sessions from non-excluded users.
+# - If it detects multiple sessions for the same user, it kills the newest session
+#   (unless the user is in 'excluded_users').
+##################################################################################
 alias: Tautulli Kill Streams - Limit All Users to One Session ( With User Exclusions)
 description: >
   Terminates the newest stream when any non-excluded user has multiple active
