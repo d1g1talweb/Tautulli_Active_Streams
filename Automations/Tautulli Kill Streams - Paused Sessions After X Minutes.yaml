@@ -19,8 +19,8 @@
 # Once active, any Plex session reported by Tautulli as 'paused' beyond 'pause_limit_minutes'
 # is automatically terminated via 'tautulli_active_streams.kill_session_stream'.
 ##################################################################################
-#
-##################################################################################
+
+
 alias: "Tautulli Kill Stream - Paused Sessions After X Minutes"
 description: >
   Terminates any Plex session reported by Tautulli that has been paused longer
