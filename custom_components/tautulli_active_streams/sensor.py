@@ -4,6 +4,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.const import STATE_OFF, CONF_URL, CONF_API_KEY, CONF_VERIFY_SSL
 from homeassistant.helpers.entity import EntityCategory
 from .const import DOMAIN, DEFAULT_SESSION_COUNT
+from homeassistant.components.sensor import SensorStateClass, SensorDeviceClass
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -218,43 +220,45 @@ class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = f"{metric.replace('_', ' ').title()}" 
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_device_info = self.device_info
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_device_class = SensorDeviceClass.DATA_SIZE
+        if metric in ["total_bandwidth", "lan_bandwidth", "wan_bandwidth"]:
+            self._attr_native_unit_of_measurement = "Mbit"
+        else:
+            self._attr_native_unit_of_measurement = None
 
     @property
     def state(self):
-        """Return the main numeric diagnostic value (for example, stream_count)."""
+        """Return the main diagnostic value."""
         diagnostics = self.coordinator.data.get("diagnostics", {})
-        return diagnostics.get(self._metric, 0)
-        
+        raw_value = diagnostics.get(self._metric, 0)
+        if self._metric in ["total_bandwidth", "lan_bandwidth", "wan_bandwidth"]:
+            try:
+                converted = round(float(raw_value) / 1000, 1)
+                return converted
+            except Exception as err:
+                _LOGGER.error("Error converting bandwidth: %s", err)
+                return raw_value
+        return raw_value
+            
+
     @property
     def extra_state_attributes(self):
-        """
-        If this sensor is for 'stream_count', also attach a 
-        'sessions' attribute listing each active session.
-        Otherwise, return an empty dict or any additional 
-        diagnostic info you like.
-        """
-        # If it's not the 'stream_count' metric, we can simply return {}
-        # or include the raw 'diagnostics' data if you want.
+        """Return additional diagnostic attributes (if any)."""
         if self._metric != "stream_count":
             return {}
-
-        # For 'stream_count', let's attach the session list
         sessions = self.coordinator.data.get("sessions", [])
         filtered_sessions = []
-
         for session in sessions:
             filtered_sessions.append({
                 "username": (session.get("username") or "").lower(),
                 "user": (session.get("user") or "").lower(),
                 "full_title": session.get("full_title"),
+                "stream_start_time": session.get("start_time"),
                 "start_time_raw": session.get("start_time_raw"),
                 "session_id": session.get("session_id"),
             })
-
-        # Return a dict containing "sessions" under extra_state_attributes
-        return {
-            "sessions": filtered_sessions
-        }
+        return {"sessions": filtered_sessions}
 
     @property
     def icon(self):
@@ -272,7 +276,7 @@ class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self):
-        """Ensure diagnostic sensors are grouped under the same device."""
+        """Diagnostic sensors grouped under Tautulli Active Streams."""
         return {
             "identifiers": {(DOMAIN, self._entry.entry_id)},
             "name": "Tautulli Active Streams",
@@ -280,3 +284,4 @@ class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
             "model": "Tautulli Active Streams",
             "entry_type": "service",
         }
+        
