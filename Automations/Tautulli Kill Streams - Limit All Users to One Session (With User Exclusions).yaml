@@ -22,6 +22,7 @@
 # - If it detects multiple sessions for the same user, it kills the newest session
 #   (unless the user is in 'excluded_users').
 ##################################################################################
+
 alias: Tautulli Kill Streams - Limit All Users to One Session ( With User Exclusions)
 description: >
   Terminates the newest stream when any non-excluded user has multiple active
