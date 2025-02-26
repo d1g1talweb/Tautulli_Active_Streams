@@ -1,8 +1,7 @@
 import logging
 import asyncio
 import time
-from datetime import timedelta
-from datetime import datetime
+from datetime import timedelta, datetime
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -20,9 +19,14 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["sensor"]
 DEFAULT_SESSION_SENSORS = DEFAULT_SESSION_COUNT
 
+def format_seconds_to_min_sec(total_seconds: float) -> str:
+    total_seconds = int(total_seconds)
+    minutes = total_seconds // 60
+    secs = total_seconds % 60
+    return f"{minutes}m {secs}s"
 
 class TautulliCoordinator(DataUpdateCoordinator):
-    """Custom Coordinator to fetch from Tautulli and track session start times."""
+    """Custom Coordinator to fetch from Tautulli and track sessions."""
 
     def __init__(self, hass: HomeAssistant, logger, api: TautulliAPI, update_interval: timedelta):
         """Initialize the coordinator."""
@@ -33,13 +37,16 @@ class TautulliCoordinator(DataUpdateCoordinator):
             update_interval=update_interval,
         )
         self.api = api
-        # Dictionary of session_id -> float(timestamp) for first time we saw that session
+        # Dictionary of session_id -> float(timestamp) for the first time we saw that session
         self.start_times = {}
-
+        # Dictionary of session_id -> float(timestamp) for the first time we saw it paused
+        self.paused_since = {}
+        
     async def _async_update_data(self):
-        """Fetch data from Tautulli API and track session start times."""
+        """Fetch data from Tautulli API and track sessions."""
         try:
-            data = await self.api.get_activity()  # {"sessions": [...], "diagnostics": {...}}
+            # Tautulli data typically has: {"sessions": [...], "diagnostics": {...}}
+            data = await self.api.get_activity()
         except Exception as err:
             _LOGGER.warning("Failed to update Tautulli data: %s", err)
             data = {}
@@ -47,30 +54,61 @@ class TautulliCoordinator(DataUpdateCoordinator):
         sessions = data.get("sessions", [])
         now = time.time()
 
-        # Build a set of current session_ids
+        # Track current active session IDs to detect removals
         current_ids = set()
+
         for s in sessions:
             sid = s.get("session_id")
-            if sid:
-                current_ids.add(sid)
-                # If it's a new session, store the time we first saw it
-                if sid not in self.start_times:
-                    self.start_times[sid] = now
+            if not sid:
+                continue  # Skip if no valid session_id
+
+            current_ids.add(sid)
+
+            # 1) Track session start times
+            if sid not in self.start_times:
+                self.start_times[sid] = now  # first time seeing this session
 
         # Clean up any old sessions that disappeared
         for old_sid in list(self.start_times.keys()):
             if old_sid not in current_ids:
                 del self.start_times[old_sid]
+                # Also remove from paused_since if present
+                if old_sid in self.paused_since:
+                    del self.paused_since[old_sid]
 
-        # Attach the tracked start time and a 24-hour clock string
+        # Attach 'start_time_raw', 'start_time', and handle paused duration
         for s in sessions:
             sid = s.get("session_id")
-            if sid in self.start_times:
-                raw_ts = self.start_times[sid]
-                s["start_time_raw"] = raw_ts
-                dt = datetime.fromtimestamp(raw_ts)
-                s["start_time"] = dt.strftime("%H:%M:%S")
+            if not sid:
+                continue
 
+            # Convert session start epoch to HH:MM:SS
+            raw_ts = self.start_times.get(sid)
+            if raw_ts:
+                dt = datetime.fromtimestamp(raw_ts)
+                s["start_time_raw"] = raw_ts
+                s["start_time"] = dt.strftime("%H:%M:%S")
+            else:
+                s["start_time_raw"] = None
+                s["start_time"] = None
+
+            # 2) Compute paused duration
+            state = s.get("state", "").strip().lower()
+            if state == "paused":
+                if sid not in self.paused_since:
+                    # record first paused time
+                    self.paused_since[sid] = now
+                paused_sec = now - self.paused_since[sid]
+                s["Stream_paused_duration_sec"] = paused_sec
+                s["Stream_paused_duration"] = format_seconds_to_min_sec(paused_sec)
+            else:
+                # if was paused before, remove from paused_since
+                if sid in self.paused_since:
+                    del self.paused_since[sid]
+                s["Stream_paused_duration_sec"] = 0
+                s["Stream_paused_duration"] = "0m 0s"
+
+        data["sessions"] = sessions
         return data
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -89,7 +127,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.http.register_view(TautulliImageView)
     # -------------------------
 
-    # Build our new custom coordinator
     update_interval = timedelta(seconds=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
     coordinator = TautulliCoordinator(
         hass=hass,
@@ -127,7 +164,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(async_update_options))
     return True
 
-
 async def async_remove_extra_session_sensors(hass: HomeAssistant, entry: ConfigEntry):
     """Remove extra session sensor entities that exceed the new configuration."""
     registry = er.async_get(hass)
@@ -142,7 +178,6 @@ async def async_remove_extra_session_sensors(hass: HomeAssistant, entry: ConfigE
             ent.unique_id.startswith("plex_session_") and 
             ent.unique_id.endswith("_tautulli")):
             try:
-       
                 number_str = ent.unique_id[len("plex_session_"):-len("_tautulli")]
                 sensor_number = int(number_str)
             except ValueError:
@@ -179,7 +214,6 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):
 
         await hass.config_entries.async_reload(entry.entry_id)
     else:
-        
         await async_remove_extra_session_sensors(hass, entry)
         coordinator.update_interval = timedelta(
             seconds=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)

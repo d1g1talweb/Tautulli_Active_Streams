@@ -9,7 +9,7 @@ class TautulliEntity(CoordinatorEntity, Entity):
 
     _attr_has_entity_name = True
     _attr_available = True
-
+     
     def __init__(self, coordinator, entry):
         """Initialize the Tautulli entity."""
         super().__init__(coordinator)

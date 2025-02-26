@@ -175,10 +175,11 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                     "transcode_throttled": session.get("transcode_throttled"),
                     "transcode_progress": session.get("transcode_progress"),
                     "transcode_speed": session.get("transcode_speed"),
-                    "stream_container": session.get("stream_container"),
                     "stream_start_time": session.get("start_time"),
                     "stream_duration": formatted_duration,
                     "stream_remaining": formatted_remaining,
+                    "Stream_paused_duration": session.get("Stream_paused_duration"),
+                    "stream_container": session.get("stream_container"),
                     "stream_bitrate": session.get("stream_bitrate"),
                     "stream_video_bitrate": session.get("stream_video_bitrate"),
                     "stream_video_codec": session.get("stream_video_codec"),
@@ -258,6 +259,7 @@ class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
                 "full_title": session.get("full_title"),
                 "stream_start_time": session.get("start_time"),
                 "start_time_raw": session.get("start_time_raw"),
+                "Stream_paused_duration_sec": session.get("Stream_paused_duration_sec"),
                 "session_id": session.get("session_id"),
             })
         return {"sessions": filtered_sessions}
