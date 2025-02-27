@@ -95,6 +95,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                     
             attributes = {
                 "user": session.get("user"),
+                "email": session.get("email"),
                 "progress_percent": session.get("progress_percent"),
                 "media_type": session.get("media_type"),
                 "full_title": session.get("full_title"),
@@ -115,8 +116,13 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                 "relayed": session.get("relayed"),
                 "bandwidth": session.get("bandwidth"),
                 "video_resolution": session.get("video_resolution"),
+                "stream_start_time": session.get("start_time"),
+                "stream_duration": formatted_duration,
+                "stream_remaining": formatted_remaining,
+                "Stream_paused_duration": session.get("Stream_paused_duration"),
                 "stream_video_resolution": session.get("stream_video_resolution"),
                 "transcode_decision": session.get("transcode_decision"),
+                "start_time_raw": session.get("start_time_raw"),
             }
 
             # Check if extra attributes are enabled in options.
@@ -148,7 +154,6 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                     "user_thumb": session.get("user_thumb"),
                     "session_id": session.get("session_id"),
                     "library_name": session.get("library_name"),
-                    "start_time_raw": session.get("start_time_raw"),
                     "container": session.get("container"),
                     "aspect_ratio": session.get("aspect_ratio"),
                     "video_codec": session.get("video_codec"),
@@ -175,10 +180,6 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                     "transcode_throttled": session.get("transcode_throttled"),
                     "transcode_progress": session.get("transcode_progress"),
                     "transcode_speed": session.get("transcode_speed"),
-                    "stream_start_time": session.get("start_time"),
-                    "stream_duration": formatted_duration,
-                    "stream_remaining": formatted_remaining,
-                    "Stream_paused_duration": session.get("Stream_paused_duration"),
                     "stream_container": session.get("stream_container"),
                     "stream_bitrate": session.get("stream_bitrate"),
                     "stream_video_bitrate": session.get("stream_video_bitrate"),
