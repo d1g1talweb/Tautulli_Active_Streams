@@ -143,7 +143,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
 
                     # Calculate ETA
                     eta = datetime.now() + timedelta(seconds=remain_total_seconds)
-                    formatted_eta = eta.strftime("%I:%M:%S %p").lower()
+                    formatted_eta = eta.strftime("%I:%M %p").lower()
                 else:
                     formatted_remaining = None
                     formatted_eta = None
