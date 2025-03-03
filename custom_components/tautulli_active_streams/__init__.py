@@ -596,7 +596,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 # ---------------------------
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):
     """
-    Triggered when user changes any integration option (like sensor count or toggles stats).
+    Triggered when user changes any integration option (like sensor count, stats toggle, or stats days).
     We'll remove or reload as needed to reflect changes.
     """
     data = hass.data[DOMAIN].get(entry.entry_id)
@@ -609,57 +609,75 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):
     # Gather old/new stats toggle
     old_stats = sessions_coordinator.old_stats_toggle
     new_stats = entry.options.get(CONF_ENABLE_STATISTICS, False)
-
-    # Finally, remember to store the new value for next time
     sessions_coordinator.old_stats_toggle = new_stats
 
     # Gather old/new sensor counts
     old_sensors = sessions_coordinator.sensor_count
     new_sensors = entry.options.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
 
-    # Decide if we must reload
+    # Gather old/new stats day range
+    old_days = sessions_coordinator.old_stats_days
+    new_days = entry.options.get(CONF_STATISTICS_DAYS, 30)
+    # Store the new value for next time
+    sessions_coordinator.old_stats_days = new_days
+
+    # Decide if we need a reload
     reload_needed = False
 
+    # Did stats toggle change?
     if old_stats != new_stats:
         _LOGGER.debug("Stats toggled from %s to %s; reload needed", old_stats, new_stats)
         reload_needed = True
 
+    # Did sensor count change?
     if old_sensors != new_sensors:
         _LOGGER.debug("Sensor count changed from %s to %s; reload needed", old_sensors, new_sensors)
         reload_needed = True
 
-    # If big changes:
+    # Did stats days range change?
+    if old_days != new_days:
+        _LOGGER.debug("Stats day range changed from %s to %s; reload needed", old_days, new_days)
+        reload_needed = True
+
+    # If major changes, do a reload. But first, do partial refresh + remove.
     if reload_needed:
-        # If they lowered sensors, remove extras first
+        # 1) If they lowered sensors, remove extras first
         if new_sensors < old_sensors:
             await async_remove_extra_session_sensors(hass, entry)
 
-        # If they turned stats off, remove stats sensors & device and the watch-history button
+        # 2) If they turned stats off, remove stats sensors & device and the watch-history button
         if old_stats and not new_stats:
             await async_remove_statistics_sensors(hass, entry)
             await async_remove_history_button(hass, entry)
 
-        # Reload so sensor/button code picks up changes or re-adds them if toggled on
+        # 3) PARTIAL REFRESH to get the new data (especially if days changed),
+        #    so we know which user-stats are still valid.
+        await sessions_coordinator.async_request_refresh()
+        await history_coordinator.async_request_refresh()
+
+        # 4) Remove outdated user sensors for any users no longer present in the new data
+        current_stats = history_coordinator.data.get("user_stats", {})
+        await async_remove_outdated_user_sensors(hass, entry, current_stats)
+
+        # 5) Reload so sensor/button code picks up changes or re-adds new user sensors
         await hass.config_entries.async_reload(entry.entry_id)
 
     else:
-        # No major changes => do partial refresh
-        # Update intervals from options
+        # No major changes => do partial refresh only
         new_session_int = entry.options.get(CONF_SESSION_INTERVAL, DEFAULT_SESSION_INTERVAL)
         new_stats_int = entry.options.get(CONF_STATISTICS_INTERVAL, DEFAULT_STATISTICS_INTERVAL)
         sessions_coordinator.update_interval = timedelta(seconds=new_session_int)
         history_coordinator.update_interval = timedelta(seconds=new_stats_int)
 
-        # If sensor_count didn't change, or changed but is bigger => partial refresh
         sessions_coordinator.sensor_count = new_sensors
 
-        # Force updates
         await sessions_coordinator.async_request_refresh()
         await history_coordinator.async_request_refresh()
 
-        # Optionally remove any old user sensors that no longer match current data
+        # Remove any user sensors for users who might have disappeared
         current_stats = history_coordinator.data.get("user_stats", {})
         await async_remove_outdated_user_sensors(hass, entry, current_stats)
+
 
 
 async def async_remove_history_button(hass: HomeAssistant, entry: ConfigEntry):
@@ -676,3 +694,19 @@ async def async_remove_history_button(hass: HomeAssistant, entry: ConfigEntry):
         registry.async_remove(button_entity_id)
 
 
+async def async_remove_outdated_user_sensors(hass: HomeAssistant, entry: ConfigEntry, current_stats: dict):
+    from homeassistant.helpers import entity_registry as er
+    registry = er.async_get(hass)
+    valid_users = set(current_stats.keys())
+
+    entries = er.async_entries_for_config_entry(registry, entry.entry_id)
+    for ent in entries:
+        if "_stats_" not in ent.unique_id:
+            continue
+        parts = ent.unique_id.split("_")
+        if len(parts) < 4:
+            continue
+        sensor_username = parts[1]  # second element in unique_id
+        if sensor_username not in valid_users:
+            _LOGGER.debug("Removing outdated user-stats sensor: %s (username=%s)", ent.entity_id, sensor_username)
+            registry.async_remove(ent.entity_id)
