@@ -16,7 +16,7 @@ from .const import (
     CONF_NUM_SENSORS,
     CONF_ENABLE_STATISTICS,
     CONF_IMAGE_PROXY,
-    CONF_ADVANCED_ATTRIBUTES, 
+    CONF_ADVANCED_ATTRIBUTES,  # <-- Make sure these are imported
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -411,9 +411,22 @@ class TautulliUserStatsSensor(CoordinatorEntity, SensorEntity):
             "total_play_duration": self._stats.get("total_play_duration", "0h 0m"),
             "total_completion_rate": self._stats.get("total_completion_rate", 0.0),
             "longest_play": self._stats.get("longest_play", "0h 0m"),
+            "average_play_gap": self._stats.get("average_play_gap", "N/A"),
             "paused_count": self._stats.get("paused_count", 0),
             "total_paused_duration": self._stats.get("total_paused_duration", "0h 0m"),
 
+            # --- Popular Titles ---
+            "most_popular_show": self._stats.get("most_popular_show", ""),
+            "most_popular_movie": self._stats.get("most_popular_movie", ""),
+            
+            # --- Watch Times --- Weekday & Gaps ---
+            "preferred_watch_time": self._stats.get("preferred_watch_time", ""),
+            "weekday_plays": self._stats.get("weekday_plays", []),
+            "watched_morning": self._stats.get("watched_morning", 0),
+            "watched_afternoon": self._stats.get("watched_afternoon", 0),
+            "watched_midday": self._stats.get("watched_midday", 0),
+            "watched_evening": self._stats.get("watched_evening", 0),
+            
             # --- Transcode / Playback Types ---
             "transcode_count": self._stats.get("transcode_count", 0),
             "direct_play_count": self._stats.get("direct_play_count", 0),
@@ -425,19 +438,6 @@ class TautulliUserStatsSensor(CoordinatorEntity, SensorEntity):
             # --- Device Usage ---
             "most_used_device": self._stats.get("most_used_device", ""),
             "common_audio_language": self._stats.get("common_audio_language", "Unknown"),
-
-            # --- Watch Times --- Weekday & Gaps ---
-            "watched_morning": self._stats.get("watched_morning", 0),
-            "watched_afternoon": self._stats.get("watched_afternoon", 0),
-            "watched_midday": self._stats.get("watched_midday", 0),
-            "watched_evening": self._stats.get("watched_evening", 0),
-            "preferred_watch_time": self._stats.get("preferred_watch_time", ""),
-            "weekday_plays": self._stats.get("weekday_plays", []),
-            "average_play_gap": self._stats.get("average_play_gap", "N/A"),
-
-            # --- Popular Titles ---
-            "most_popular_show": self._stats.get("most_popular_show", ""),
-            "most_popular_movie": self._stats.get("most_popular_movie", ""),
 
             # --- LAN vs WAN ---
             "lan_plays": self._stats.get("lan_plays", 0),
