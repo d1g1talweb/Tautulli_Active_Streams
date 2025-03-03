@@ -4,8 +4,10 @@ import asyncio
 
 _LOGGER = logging.getLogger(__name__)
 
+
 class TautulliAPI:
     """Handles communication with the Tautulli API."""
+
     def __init__(self, url, api_key, session, verify_ssl=True, timeout=10):
         """
         Initialize the API client.
@@ -27,11 +29,6 @@ class TautulliAPI:
     async def _call_tautulli(self, cmd, params=None, method="GET"):
         """
         Generic helper to call any Tautulli API command.
-
-        :param cmd: The Tautulli command, e.g. "get_activity" or "terminate_session".
-        :param params: Dictionary of extra parameters for the Tautulli command.
-        :param method: "GET" or "POST", default is "GET".
-        :return: Parsed JSON response from Tautulli (or {} if an error occurs).
         """
         if params is None:
             params = {}
@@ -39,8 +36,10 @@ class TautulliAPI:
         url = f"{self._base_url}?apikey={self._api_key}&cmd={cmd}"
         method = method.upper()
 
-        _LOGGER.debug("TautulliAPI: calling cmd=%s method=%s url=%s params=%s",
-                      cmd, method, url, params)
+        _LOGGER.debug(
+            "TautulliAPI: calling cmd=%s method=%s url=%s params=%s",
+            cmd, method, url, params
+        )
 
         try:
             if method == "POST":
@@ -75,21 +74,18 @@ class TautulliAPI:
                             _LOGGER.warning("Invalid JSON from Tautulli: %s", json_err)
                             return {}
                     else:
-                        _LOGGER.warning("Non-200 status from Tautulli GET: %s", response.status)
+                        _LOGGER.debug("Non-200 status from Tautulli GET: %s", response.status)
                         return {}
         except asyncio.TimeoutError:
-            _LOGGER.warning("Tautulli API request to %s timed out after %s seconds.", url, self._timeout)
+            _LOGGER.debug("Tautulli API request to %s timed out after %s seconds.", url, self._timeout)
             return {}
         except Exception as err:
-            _LOGGER.error("Exception calling Tautulli %s: %s", cmd, err)
+            _LOGGER.debug("Exception calling Tautulli %s: %s", cmd, err)
             return {}
 
     async def get_activity(self):
         """
         Retrieve active session data from Tautulli.
-
-        :return: A dict with "sessions" and "diagnostics".
-                 e.g. {"sessions": [...], "diagnostics": {...}}
         """
         resp = await self._call_tautulli("get_activity", method="GET")
         if not resp:
@@ -111,15 +107,17 @@ class TautulliAPI:
             "diagnostics": diagnostics,
         }
 
-    async def terminate_session(self, session_id, message=""):
+    async def get_history(self, **params):
         """
-        Terminate an active session via Tautulli's 'terminate_session' command.
+        Retrieve watch history data from Tautulli.
+        """
+        resp = await self._call_tautulli("get_history", params=params, method="GET")
+        if not resp:
+            return {}
+        return resp.get("response", {}).get("data", {})
 
-        :param session_id: The Tautulli session ID to kill.
-        :param message: An optional message to display to the user being killed.
-        :return: Tautulli's response as a dict (or {} on error).
-        """
+    async def terminate_session(self, session_id, message=""):
+        """Kill a Tautulli session by session_id."""
         params = {"session_id": session_id, "message": message}
-        # For terminate_session, Tautulli typically expects a GET. Adjust if needed.
         resp = await self._call_tautulli("terminate_session", params=params, method="GET")
         return resp
