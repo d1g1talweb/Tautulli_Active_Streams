@@ -394,6 +394,10 @@ class TautulliUserStatsSensor(CoordinatorEntity, SensorEntity):
         }
 
     @property
+    def icon(self) -> str:
+        return "mdi:account"
+        
+    @property
     def state(self):
         user_stats = self.coordinator.data["user_stats"].get(self._username, {})
         return user_stats.get("total_play_duration", "0h 0m")
