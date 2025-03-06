@@ -20,6 +20,7 @@ CONF_STATISTICS_INTERVAL = "statistics_interval"
 CONF_STATISTICS_DAYS = "statistics_days"
 CONF_ADVANCED_ATTRIBUTES = "advanced_attributes"
 CONF_IMAGE_PROXY = "image_proxy"
+CONF_ENABLE_IP_GEOLOCATION = "enable_ip_geolocation"
 
 DEFAULT_VERIFY_SSL = False
 
