@@ -46,6 +46,13 @@
           "enable_statistics": "Enable watch-history statistics?",
           "statistics_days": "Number of days to fetch watch-history from Tautulli."
         }
+      },
+      "geo": {
+        "title": "IP Geolocation (Options Flow)",
+        "description": "If enabled, user IPs will be sent to the external geolocation service (http://ip-api.com). Proceed only if you consent.",
+        "data": {
+          "enable_ip_geolocation": "Enable IP Geolocation?"
+        }
       }
     }
   },
