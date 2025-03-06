@@ -149,10 +149,6 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._flow_data["enable_ip_geo"] = user_input.get(CONF_ENABLE_IP_GEOLOCATION, False)
             return self._create_entry()
 
-        # we can show a description/warning:
-        description = (
-            "By enabling IP Geolocation, you consent to sending user IP addresses to a geolocation service."
-        )
         data_schema = vol.Schema({
             vol.Optional(CONF_ENABLE_IP_GEOLOCATION, default=False): bool,
         })
@@ -281,4 +277,4 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
                 default=self._initial_opts.get(CONF_ENABLE_IP_GEOLOCATION, False)
             ): bool
         })
-        return self.async_show_form(step_id="geo", data_schema=data_schema, description=desc)
+        return self.async_show_form(step_id="geo", data_schema=data_schema)
