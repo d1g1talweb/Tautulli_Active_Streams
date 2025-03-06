@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import time
+import aiohttp
 from datetime import datetime, timedelta
 
 from homeassistant.helpers import device_registry as dr
@@ -25,6 +26,7 @@ from .const import (
     CONF_NUM_SENSORS,
     CONF_STATISTICS_INTERVAL,
     CONF_STATISTICS_DAYS,
+    CONF_ENABLE_IP_GEOLOCATION, 
     LOGGER as _LOGGER,
 )
 
@@ -38,6 +40,64 @@ def format_seconds_to_min_sec(total_seconds: float) -> str:
     secs = total_seconds % 60
     return f"{minutes}m {secs}s"
 
+
+# ---------------------------
+#  Simple IP Cache
+# ---------------------------
+class IPGeoCache:
+    """
+    Instead of returning only (lat, lon), we return the full IP-API JSON
+    so it can include city, regionName, country, etc. Then we store it in cache.
+    """
+
+    def __init__(self):
+        self._cache = {}  # { ip: (geo_data_dict, expiry) }
+
+    async def lookup_ip(self, hass, ip: str) -> dict:
+        """
+        Return a dict containing at least:
+          {
+            "lat": float or None,
+            "lon": float or None,
+            "city": str or None,
+            "regionName": str or None,
+            "country": str or None,
+            ... plus any other fields from ip-api
+          }
+        or {} if error
+        """
+        now = time.time()
+        cached = self._cache.get(ip)
+        if cached:
+            geo_data, expiry = cached
+            if now < expiry:
+                return geo_data  # still valid
+
+        # Not in cache or expired => fetch
+        geo_data = await self._fetch_ip_api(hass, ip)
+        # store 24h
+        self._cache[ip] = (geo_data, now + 86400)
+        return geo_data
+
+    async def _fetch_ip_api(self, hass, ip: str) -> dict:
+        """
+        Example using ip-api.com. We request lat, lon, city, regionName, country, etc.
+        Returns a dict with those keys or {} if error.
+        """
+        url = (
+            f"http://ip-api.com/json/{ip}"
+            f"?fields=status,lat,lon,city,regionName,country"
+        )
+        session = async_get_clientsession(hass)
+        try:
+            async with session.get(url, timeout=10) as resp:
+                data = await resp.json()
+                if data.get("status") == "success":
+                    return data  # the full JSON with lat, lon, city, regionName, etc.
+                else:
+                    return {}
+        except (asyncio.TimeoutError, aiohttp.ClientError):
+            return {}
 
 # ---------------------------
 # Coordinator A (Sessions)
@@ -130,6 +190,9 @@ class TautulliSessionsCoordinator(DataUpdateCoordinator):
         return data
 
 
+
+
+
 # ---------------------------
 # Coordinator B (History)
 # ---------------------------
@@ -151,6 +214,9 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
         self.config_entry = config_entry
         self.api = api
 
+        # Create an IP geolocation cache
+        self._geo_cache = IPGeoCache()
+        
     async def _async_update_data(self):
         """If stats are on, fetch watch history and parse user_stats."""
         data = {}
@@ -176,7 +242,12 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
             data["history"] = {}
             data["user_stats"] = {}
 
+        # If IP geolocation is on, geolocate each user's last IP
+        if self.config_entry.options.get(CONF_ENABLE_IP_GEOLOCATION, False):
+            await self._do_user_ip_geolocation(data.get("user_stats", {}))
+
         return data
+
 
     def _parse_user_history(self, hist_resp):
         """Parse watch history and accumulate user stats for each user."""
@@ -215,9 +286,25 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
                     "play_start_times": [],
                     "shows_map": {},
                     "movies_map": {},
+                    # store last IP and last time we saw it
+                    "last_ip": None,
+                    "last_started_ts": 0,
+                    # store location 
+                    "geo_city": None,
+                    "geo_region": None,
+                    "geo_country": None,
                 }
 
             stats = user_stats[user]
+
+            # read IP address if available
+            ip_addr = item.get("ip_address")
+            started_ts = item.get("started", 0)
+            # if this record is more recent than our stored "last_started_ts", update last_ip
+            if ip_addr and started_ts and started_ts > stats["last_started_ts"]:
+                stats["last_ip"] = ip_addr
+                stats["last_started_ts"] = started_ts
+
 
             # Pause logic: if paused_counter > 0, increment paused_count
             paused_seconds = item.get("paused_counter", 0)
@@ -429,6 +516,60 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
                 stats["most_popular_movie"] = ""
 
         return user_stats
+
+    async def _do_user_ip_geolocation(self, all_user_stats):
+        """Loop over each user, geolocate their 'last_ip', and store region/city/country in stats."""
+        if not all_user_stats:
+            return
+
+        for username, stats in all_user_stats.items():
+            ip = stats.get("last_ip")
+            if not ip:
+                continue
+
+            # 1) get entire geo dict from cache
+            geodata = await self._geo_cache.lookup_ip(self.hass, ip)
+            if not geodata:
+                continue
+
+            # 2) parse lat, lon, city, regionName, country, etc.
+            lat = geodata.get("lat")
+            lon = geodata.get("lon")
+            city = geodata.get("city")
+            region = geodata.get("regionName")
+            country = geodata.get("country")
+
+            # 3) store them in stats
+            if lat is not None and lon is not None:
+                stats["latitude"] = lat
+                stats["longitude"] = lon
+            if city:
+                stats["geo_city"] = city
+            if region:
+                stats["geo_region"] = region
+            if country:
+                stats["geo_country"] = country
+
+            # 4) create or update device_tracker
+            dev_id = f"tautulli_{username.lower().replace(' ','_')}"
+            await self.hass.services.async_call(
+                "device_tracker",
+                "see",
+                {
+                    "dev_id": dev_id,
+                    "host_name": f"{username}: Tautulli",
+                    "gps": (lat, lon) if (lat and lon) else (0, 0),
+                    "attributes": {
+                        "ip_address": ip,
+                        "city": city,
+                        "region": region,
+                        "country": country,
+                        # etc.
+                    },
+                },
+                blocking=False
+            )
+
 
 
 # ---------------------------
