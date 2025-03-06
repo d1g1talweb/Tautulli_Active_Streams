@@ -442,7 +442,12 @@ class TautulliUserStatsSensor(CoordinatorEntity, SensorEntity):
             # --- Device Usage ---
             "most_used_device": self._stats.get("most_used_device", ""),
             "common_audio_language": self._stats.get("common_audio_language", "Unknown"),
-
+            
+            # --- Geo Location ---
+            "geo_city": self._stats.get("geo_city"),
+            "geo_region": self._stats.get("geo_region"),
+            "geo_country": self._stats.get("geo_country"),
+            
             # --- LAN vs WAN ---
             "lan_plays": self._stats.get("lan_plays", 0),
             "wan_plays": self._stats.get("wan_plays", 0),
