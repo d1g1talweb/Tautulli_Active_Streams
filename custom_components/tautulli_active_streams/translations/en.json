@@ -8,24 +8,30 @@
           "server_name": "Enter a friendly name for your Tautulli server (optional).",
           "url": "Enter the full URL of your Tautulli server (including port if necessary).",
           "api_key": "API key (found in Tautulli settings).",
-          "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate."
+          "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate.",
+          "image_proxy": "Use Image Proxy? (Proxy images via Home Assistant)."
         }
       },
-      "options": {
+      "options_stats": {
         "title": "Tautulli Advanced Setup",
         "description": "Configure how often to poll Tautulli, how many sensors to create, and whether to enable watch-history statistics.",
         "data": {
           "session_interval": "How often (in seconds) to refresh active streams? (Default: 4).",
           "statistics_interval": "How often (in seconds) to refresh watch-history for statistics? (Default: 1800).",
           "num_sensors": "Number of sensors to create for monitoring active streams.",
-          "image_proxy": "Use Image Proxy? (Proxy images via Home Assistant).",
           "advanced_attributes": "Enable Advanced Attributes? (Extra session details).",
           "enable_statistics": "Enable Tautulli Statistics? (Default 30 days history)."
+        }
+      },
+      "options_geo": {
+        "title": "IP Geolocation",
+        "description": "If enabled, Statistics-Users IP addresses will be sent to the external geolocation service. http://ip-api.com \n\n Proceed only if you consent.",
+        "data": {
+          "enable_ip_geolocation": "Enable IP Geolocation."
         }
       }
     }
   },
-
   "options": {
     "step": {
       "init": {
@@ -43,7 +49,6 @@
       }
     }
   },
-
   "error": {
     "cannot_connect": "Unable to connect to Tautulli. Please check your URL, API key, and network connectivity."
   }
