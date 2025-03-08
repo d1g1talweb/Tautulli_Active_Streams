@@ -13,8 +13,11 @@
 <br>
 
 ## 📌 Features
-A custom integration for Home Assistant that allows you to monitor active Plex streams using Tautulli Api.
+A custom integration for Home Assistant that allows you to monitor active Plex streams and User Statistics using Tautulli Api.
+<br>
+*Multi Tautulli Instances Supported!*
 
+##  Active Streams
 - Dynamically creates session sensors based on active Plex streams.
 - Custom Sensor Count – Choose how many active streams to display.
 - Adjustable Scan Interval – Set how often HA updates stream data.
@@ -23,15 +26,29 @@ A custom integration for Home Assistant that allows you to monitor active Plex s
     * :bust_in_silhouette: **User** (Who is watching)
     * :earth_africa: **IP Address & Device**
     * :tv: **Playback Progress & Quality**
-    * And so much more!
-
+      * And so much more!
+ 
+##  Statistics
+- Seperate Scan Interval  – Set how often HA updates Statistics data.
+- Fetch Range - Choose how far data should be fetched from default 30 days ago. 
+- Detailed User Attributes – Each user sensor provides:
+    * **Total Play Duration**
+    * **Tatal Completion Rate**
+    * **Longest Play**
+    * **Prefered Watch Time**
+    * **Transcode Percentage**
+    * **Geo Location Data**
+      * And so much more!
+ 
 --- 
 
- - **Kill All Active Streams:**  
+## 📌 Services
+
+   * **Kill All Active Streams:**  
    A new service that terminates every active stream, regardless of the user.
- - **Kill Active Streams by Username:**  
+   * **Kill Active Streams by Username:**  
    A new service that terminates all streams associated with a specified username.
- - **Kill Active Streams by Session:**  
+   * **Kill Active Streams by Session:**  
    A new service that terminates a Single stream.
    
 <details>
@@ -109,7 +126,12 @@ These new features are designed to work seamlessly with automations and will bec
    
 * **Setup in Home Assistant:**
   * Go to **Settings → Devices & Services** and **Add** the integration.
-  * Enter your **Tautulli details (URL, API Key)**, and set the Session Sensor Count and Refresh Interval.
+  * Enter your **Tautulli details (URL, API Key)**, 
+  * Set the Session Sensor Count and Refresh Interval.
+  * Option to use Image Proxy service.
+  * Option to use Advanced Attributes.
+  * Option to enable Statistics Service.
+     * if enabled this will give you an option to enable Geo Location for Users.
 
 ---
 
