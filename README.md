@@ -61,7 +61,7 @@ Check Attributes in "plex_session_" for "user" or "session_id"
 ### 1️⃣ Kill All Active Streams
 Call the service from Developer Tools → Actions:
 
-```
+```yaml
 service: tautulli_active_streams.kill_all_streams
 data:
   message: "Your Message Here"
@@ -70,7 +70,7 @@ data:
 ### 2️⃣ Kill Streams for a Specific User
 Call the service for a specific user:
 
-```
+```yaml
 service: tautulli_active_streams.kill_user_stream
 data:
   user: "john_doe"
@@ -80,7 +80,7 @@ data:
 ### 2️⃣ Kill Streams for a Specific Session
 Call the service for a specific session_id:
 
-```
+```yaml
 service: tautulli_active_streams.kill_session_stream
 data:
   session_id: "gxvzdoq4fjkjfmduq5dgf25hz"
@@ -161,7 +161,7 @@ Dynamically displays active Plex sessions using **Tautulli** data fetched by the
 <summary>➡️ Click Here  Card YAML - Last updated 23.02.2025</summary>
 <br><br> 
  
-```
+```yaml
 type: custom:auto-entities
 filter:
   exclude:
