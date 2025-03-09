@@ -515,8 +515,8 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
             lat = geodata.get("latitude")
             lon = geodata.get("longitude")
             city = geodata.get("city")
-            region = geodata.get("region")       # e.g. "region"
-            country = geodata.get("country")     # e.g. "country"
+            region = geodata.get("region")
+            country = geodata.get("country")
     
             # 3) Store them back in stats if you like
             if lat is not None and lon is not None:
@@ -530,25 +530,37 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
             if country:
                 stats["geo_country"] = country
     
+            # 3.5) Prepare "last_watched" from your last_stopped_ts if available
+            last_stopped_ts = stats.get("last_stopped_ts")
+            last_watched_str = None
+            if last_stopped_ts:
+                dt_obj = datetime.fromtimestamp(last_stopped_ts)
+                # Format with 12-hr clock, strip leading zero from the hour if present:
+                raw_str = dt_obj.strftime("%I:%M%p %d-%m-%Y")  # e.g. "02:38PM 12-03-2025"
+                last_watched_str = raw_str.lstrip("0")         # becomes "2:38PM 12-03-2025"
+    
             # 4) Create or update the device_tracker in Home Assistant
             dev_id = f"tautulli_{username.lower().replace(' ', '_').replace('.', '')}"
-
+    
+            # Build the attributes dictionary
+            attributes = {
+                "ip_address": ip,
+                "city": city,
+                "region": region,
+                "country": country,
+            }
+            if last_watched_str:
+                attributes["last_watched"] = last_watched_str
+    
             await self.hass.services.async_call(
                 "device_tracker",
                 "see",
-                {
+            {
                     "dev_id": dev_id,
                     "host_name": f"{username}: Tautulli",
-                    # Provide GPS coords or fallback to (0, 0) if missing
                     "gps": (lat, lon) if lat is not None and lon is not None else (0, 0),
-                    "source_type": "gps",  # Make sure we mark it as GPS
-                    "attributes": {
-                        "ip_address": ip,
-                        "city": city,
-                        "region": region,
-                        "country": country,
-                        # Add anything else you’d like in attributes
-                    },
+                    "source_type": "gps",
+                    "attributes": attributes,
                 },
                 blocking=False,
             )
