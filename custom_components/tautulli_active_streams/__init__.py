@@ -42,64 +42,6 @@ def format_seconds_to_min_sec(total_seconds: float) -> str:
 
 
 # ---------------------------
-#  Simple IP Cache
-# ---------------------------
-class IPGeoCache:
-    """
-    Instead of returning only (lat, lon), we return the full IP-API JSON
-    so it can include city, regionName, country, etc. Then we store it in cache.
-    """
-
-    def __init__(self):
-        self._cache = {}  # { ip: (geo_data_dict, expiry) }
-
-    async def lookup_ip(self, hass, ip: str) -> dict:
-        """
-        Return a dict containing at least:
-          {
-            "lat": float or None,
-            "lon": float or None,
-            "city": str or None,
-            "regionName": str or None,
-            "country": str or None,
-            ... plus any other fields from ip-api
-          }
-        or {} if error
-        """
-        now = time.time()
-        cached = self._cache.get(ip)
-        if cached:
-            geo_data, expiry = cached
-            if now < expiry:
-                return geo_data  # still valid
-
-        # Not in cache or expired => fetch
-        geo_data = await self._fetch_ip_api(hass, ip)
-        # store 24h
-        self._cache[ip] = (geo_data, now + 86400)
-        return geo_data
-
-    async def _fetch_ip_api(self, hass, ip: str) -> dict:
-        """
-        Example using ip-api.com. We request lat, lon, city, regionName, country, etc.
-        Returns a dict with those keys or {} if error.
-        """
-        url = (
-            f"http://ip-api.com/json/{ip}"
-            f"?fields=status,lat,lon,city,regionName,country"
-        )
-        session = async_get_clientsession(hass)
-        try:
-            async with session.get(url, timeout=10) as resp:
-                data = await resp.json()
-                if data.get("status") == "success":
-                    return data  # the full JSON with lat, lon, city, regionName, etc.
-                else:
-                    return {}
-        except (asyncio.TimeoutError, aiohttp.ClientError):
-            return {}
-
-# ---------------------------
 # Coordinator A (Sessions)
 # ---------------------------
 class TautulliSessionsCoordinator(DataUpdateCoordinator):
@@ -115,10 +57,13 @@ class TautulliSessionsCoordinator(DataUpdateCoordinator):
         api: TautulliAPI,
         update_interval: timedelta,
         config_entry: ConfigEntry,
+        geo_cache,  # reference to the IP-geo cache
+
     ):
         super().__init__(hass, logger, name="TautulliSessions", update_interval=update_interval)
         self.config_entry = config_entry
         self.api = api
+        self._geo_cache = geo_cache  # store reference to the geo cache
 
         self.start_times = {}
         self.paused_since = {}
@@ -131,7 +76,8 @@ class TautulliSessionsCoordinator(DataUpdateCoordinator):
 
         # Also store old stats toggle
         self.old_stats_toggle = config_entry.options.get(CONF_ENABLE_STATISTICS, False)
-
+        
+        
     async def _async_update_data(self):
         """Fetch from Tautulli get_activity, track paused durations, etc."""
         data = {}
@@ -186,11 +132,26 @@ class TautulliSessionsCoordinator(DataUpdateCoordinator):
                 s["Stream_paused_duration_sec"] = 0
                 s["Stream_paused_duration"] = "0m 0s"
 
+        # If IP geolocation is on => do lookups
+        if self.config_entry.options.get(CONF_ENABLE_IP_GEOLOCATION, False):
+            for s in sessions:
+                ip = s.get("ip_address_public") or s.get("ip_address")
+                if ip:
+                    # call the geo cache
+                    geo_data = await self._geo_cache.lookup_ip(self.hass, ip)
+                    s["geo_city"] = geo_data.get("city", "Unknown")
+                    s["geo_code"] = geo_data.get("code")
+                    s["geo_continent"] = geo_data.get("continent")
+                    s["geo_country"] = geo_data.get("country")
+                    s["geo_latitude"] = geo_data.get("latitude")
+                    s["geo_longitude"] = geo_data.get("longitude")
+                    s["geo_postal_code"] = geo_data.get("postal_code")
+                    s["geo_region"] = geo_data.get("region")
+                    s["geo_timezone"] = geo_data.get("timezone")
+                    s["geo_accuracy"] = geo_data.get("accuracy")
+                
         data["sessions"] = sessions
         return data
-
-
-
 
 
 # ---------------------------
@@ -209,13 +170,13 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
         api: TautulliAPI,
         update_interval: timedelta,
         config_entry: ConfigEntry,
+        geo_cache,  # same approach
     ):
         super().__init__(hass, logger, name="TautulliHistory", update_interval=update_interval)
         self.config_entry = config_entry
         self.api = api
+        self._geo_cache = geo_cache
 
-        # Create an IP geolocation cache
-        self._geo_cache = IPGeoCache()
         
     async def _async_update_data(self):
         """If stats are on, fetch watch history and parse user_stats."""
@@ -289,6 +250,7 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
                     # store last IP and last time we saw it
                     "last_ip": None,
                     "last_started_ts": 0,
+                    "last_stopped_ts": 0,
                     # store location 
                     "geo_city": None,
                     "geo_region": None,
@@ -397,6 +359,11 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
                     stats["movies_map"].get(movie_title, 0) + 1
                 )
 
+            # track 'stopped' to find last_stopped_ts
+            stopped_ts = item.get("stopped", 0)
+            if stopped_ts and stopped_ts > stats["last_stopped_ts"]:
+                stats["last_stopped_ts"] = stopped_ts
+                
         # Final calculations for each user
         for user, stats in user_stats.items():
             total_plays = stats["total_plays"] or 1
@@ -418,6 +385,16 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
             else:
                 stats["last_transcode_date"] = ""
 
+            # compute days_since_last_watch if we have last_stopped_ts
+            last_stop = stats.get("last_stopped_ts", 0)
+            if last_stop > 0:
+                now_ts = time.time()
+                diff_sec = now_ts - last_stop
+                diff_days = diff_sec / 86400.0
+                stats["days_since_last_watch"] = round(diff_days, 1)
+            else:
+                stats["days_since_last_watch"] = None
+                
             # preferred watch day
             day_index = max(range(7), key=lambda i: stats["weekday_plays"][i])
             weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -518,7 +495,6 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
         return user_stats
 
     async def _do_user_ip_geolocation(self, all_user_stats):
-        """Loop over each user, geolocate their 'last_ip', and store region/city/country in stats."""
         if not all_user_stats:
             return
 
@@ -526,49 +502,39 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
             ip = stats.get("last_ip")
             if not ip:
                 continue
+            geo_data = await self._geo_cache.lookup_ip(self.hass, ip)
+            stats["geo_city"] = geo_data.get("city")
+            stats["geo_country"] = geo_data.get("country")
+            stats["geo_code"] = geo_data.get("code")
+            stats["geo_lat"] = geo_data.get("latitude")
+            stats["geo_lon"] = geo_data.get("longitude")
+            stats["geo_region"] = geo_data.get("region")
+            stats["geo_continent"] = geo_data.get("continent")
+            stats["geo_postal_code"] = geo_data.get("postal_code")
+            stats["geo_timezone"] = geo_data.get("timezone")
+            stats["geo_accuracy"] = geo_data.get("accuracy")
 
-            # 1) get entire geo dict from cache
-            geodata = await self._geo_cache.lookup_ip(self.hass, ip)
-            if not geodata:
-                continue
 
-            # 2) parse lat, lon, city, regionName, country, etc.
-            lat = geodata.get("lat")
-            lon = geodata.get("lon")
-            city = geodata.get("city")
-            region = geodata.get("regionName")
-            country = geodata.get("country")
+# --------------- IPGeoCache Example --------------- #
+class IPGeoCache:
+    """Simple cache that calls Tautulli's get_geoip_lookup once per IP per day."""
+    def __init__(self, api: TautulliAPI):
+        self._api = api  # store reference to TautulliAPI
+        self._cache = {}  # {ip: (geo_data_dict, expiry_time)}
 
-            # 3) store them in stats
-            if lat is not None and lon is not None:
-                stats["latitude"] = lat
-                stats["longitude"] = lon
-            if city:
-                stats["geo_city"] = city
-            if region:
-                stats["geo_region"] = region
-            if country:
-                stats["geo_country"] = country
+    async def lookup_ip(self, hass: HomeAssistant, ip: str) -> dict:
+        now = time.time()
+        cached = self._cache.get(ip)
+        if cached:
+            geo_data, expiry = cached
+            if now < expiry:
+                return geo_data  # still valid in cache
 
-            # 4) create or update device_tracker
-            dev_id = f"tautulli_{username.lower().replace(' ','_')}"
-            await self.hass.services.async_call(
-                "device_tracker",
-                "see",
-                {
-                    "dev_id": dev_id,
-                    "host_name": f"{username}: Tautulli",
-                    "gps": (lat, lon) if (lat and lon) else (0, 0),
-                    "attributes": {
-                        "ip_address": ip,
-                        "city": city,
-                        "region": region,
-                        "country": country,
-                        # etc.
-                    },
-                },
-                blocking=False
-            )
+        # Not in cache or expired => fetch from Tautulli
+        geo_data = await self._api.get_geoip_lookup(ip)
+        self._cache[ip] = (geo_data, now + 3600)  # 1h
+        return geo_data
+# --------------------------------------------------- #
 
 
 
@@ -590,7 +556,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     verify_ssl = entry.data.get(CONF_VERIFY_SSL, True)
     session = async_get_clientsession(hass, verify_ssl=verify_ssl)
     api = TautulliAPI(url, api_key, session, verify_ssl)
-
+    
+    # Create the IPGeoCache (shared) so we can pass it to both coordinators
+    geo_cache = IPGeoCache(api)
+    
     # 2) Build your session + history coordinators
     session_interval = entry.options.get(CONF_SESSION_INTERVAL, DEFAULT_SESSION_INTERVAL)
     stats_interval = entry.options.get(CONF_STATISTICS_INTERVAL, DEFAULT_STATISTICS_INTERVAL)
@@ -600,7 +569,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         logger=_LOGGER,
         api=api,
         update_interval=timedelta(seconds=session_interval),
-        config_entry=entry
+        config_entry=entry,
+        geo_cache=geo_cache
     )
 
     history_coordinator = TautulliHistoryCoordinator(
@@ -608,7 +578,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         logger=_LOGGER,
         api=api,
         update_interval=timedelta(seconds=stats_interval),
-        config_entry=entry
+        config_entry=entry,
+        geo_cache=geo_cache
     )
 
     # 3) Do first refresh
