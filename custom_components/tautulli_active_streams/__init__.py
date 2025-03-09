@@ -204,9 +204,11 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
             data["user_stats"] = {}
 
         # If IP geolocation is on, geolocate each user's last IP
+        # AND create device_tracker entries for each record
         if self.config_entry.options.get(CONF_ENABLE_IP_GEOLOCATION, False):
-            await self._do_user_ip_geolocation(data.get("user_stats", {}))
-
+            # Grab the raw record list
+            records = data["history"].get("data", []) if data["history"] else []
+            await self._do_user_ip_geolocation(data["user_stats"], records)
         return data
 
 
@@ -494,27 +496,64 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
 
         return user_stats
 
-    async def _do_user_ip_geolocation(self, all_user_stats):
+    async def _do_user_ip_geolocation(self, all_user_stats, records):
+        """Loop over user stats, geolocate them, etc."""
         if not all_user_stats:
             return
-
+    
         for username, stats in all_user_stats.items():
             ip = stats.get("last_ip")
             if not ip:
                 continue
-            geo_data = await self._geo_cache.lookup_ip(self.hass, ip)
-            stats["geo_city"] = geo_data.get("city")
-            stats["geo_country"] = geo_data.get("country")
-            stats["geo_code"] = geo_data.get("code")
-            stats["geo_lat"] = geo_data.get("latitude")
-            stats["geo_lon"] = geo_data.get("longitude")
-            stats["geo_region"] = geo_data.get("region")
-            stats["geo_continent"] = geo_data.get("continent")
-            stats["geo_postal_code"] = geo_data.get("postal_code")
-            stats["geo_timezone"] = geo_data.get("timezone")
-            stats["geo_accuracy"] = geo_data.get("accuracy")
+    
+            # 1) Get entire geo dict from Tautulli's get_geoip_lookup
+            geodata = await self._geo_cache.lookup_ip(self.hass, ip)
+            if not geodata:
+                continue
+    
+            # 2) Parse the lat/long/city/region/country from Tautulli's result
+            lat = geodata.get("latitude")
+            lon = geodata.get("longitude")
+            city = geodata.get("city")
+            region = geodata.get("region")       # e.g. "region"
+            country = geodata.get("country")     # e.g. "country"
+    
+            # 3) Store them back in stats if you like
+            if lat is not None and lon is not None:
+                stats["latitude"] = lat
+                stats["longitude"] = lon
+    
+            if city:
+                stats["geo_city"] = city
+            if region:
+                stats["geo_region"] = region
+            if country:
+                stats["geo_country"] = country
+    
+            # 4) Create or update the device_tracker in Home Assistant
+            dev_id = f"tautulli_{username.lower().replace(' ', '_').replace('.', '')}"
 
+            await self.hass.services.async_call(
+                "device_tracker",
+                "see",
+                {
+                    "dev_id": dev_id,
+                    "host_name": f"{username}: Tautulli",
+                    # Provide GPS coords or fallback to (0, 0) if missing
+                    "gps": (lat, lon) if lat is not None and lon is not None else (0, 0),
+                    "source_type": "gps",  # Make sure we mark it as GPS
+                    "attributes": {
+                        "ip_address": ip,
+                        "city": city,
+                        "region": region,
+                        "country": country,
+                        # Add anything else you’d like in attributes
+                    },
+                },
+                blocking=False,
+            )
 
+            
 # --------------- IPGeoCache Example --------------- #
 class IPGeoCache:
     """Simple cache that calls Tautulli's get_geoip_lookup once per IP per day."""
