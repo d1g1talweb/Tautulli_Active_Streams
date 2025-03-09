@@ -90,73 +90,41 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_options_stats(self, user_input=None):
         """
-        Step 2:
-          - session_interval
-          - num_sensors
-          - advanced_attributes
-          - enable_statistics
-          - statistics_interval
-          - statistics_days
-        If user toggles stats on => next step (geo).
-        If off => finalize now.
+        Step 2: Show the rest of the options including IP geolocation,
+        advanced attributes, and statistics.
         """
         errors = {}
         if user_input is not None:
-            session_int = user_input.get(CONF_SESSION_INTERVAL, DEFAULT_SESSION_INTERVAL)
-            num_sensors = user_input.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
-            adv_attrs = user_input.get(CONF_ADVANCED_ATTRIBUTES, False)
+            self._flow_data["session_interval"] = user_input.get(CONF_SESSION_INTERVAL, DEFAULT_SESSION_INTERVAL)
+            self._flow_data["num_sensors"] = user_input.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
+            self._flow_data["advanced_attrs"] = user_input.get(CONF_ADVANCED_ATTRIBUTES, False)
 
-            enable_stats = user_input.get(CONF_ENABLE_STATISTICS, False)
-            stats_int = user_input.get(CONF_STATISTICS_INTERVAL, DEFAULT_STATISTICS_INTERVAL)
-            stats_days = user_input.get(CONF_STATISTICS_DAYS, DEFAULT_STATISTICS_DAYS)
+            # IP Geolocation toggle
+            self._flow_data[CONF_ENABLE_IP_GEOLOCATION] = user_input.get(CONF_ENABLE_IP_GEOLOCATION, False)
 
-            self._flow_data["session_interval"] = session_int
-            self._flow_data["num_sensors"] = num_sensors
-            self._flow_data["advanced_attrs"] = adv_attrs
+            # Statistics
+            self._flow_data["enable_statistics"] = user_input.get(CONF_ENABLE_STATISTICS, False)
+            self._flow_data["stats_interval"] = user_input.get(CONF_STATISTICS_INTERVAL, DEFAULT_STATISTICS_INTERVAL)
+            self._flow_data["stats_days"] = user_input.get(CONF_STATISTICS_DAYS, DEFAULT_STATISTICS_DAYS)
 
-            self._flow_data["enable_statistics"] = enable_stats
-            self._flow_data["stats_interval"] = stats_int
-            self._flow_data["stats_days"] = stats_days
-
-            if enable_stats:
-                # user turned stats on => step3 geo
-                return await self.async_step_options_geo()
-            else:
-                # finalize
-                return self._create_entry()
+            return self._create_entry()
 
         data_schema = vol.Schema({
             vol.Optional(CONF_SESSION_INTERVAL, default=DEFAULT_SESSION_INTERVAL): int,
             vol.Optional(CONF_NUM_SENSORS, default=DEFAULT_NUM_SENSORS): int,
+            vol.Optional(CONF_ENABLE_IP_GEOLOCATION, default=False): bool,
             vol.Optional(CONF_ADVANCED_ATTRIBUTES, default=False): bool,
             vol.Optional(CONF_ENABLE_STATISTICS, default=False): bool,
             vol.Optional(CONF_STATISTICS_INTERVAL, default=DEFAULT_STATISTICS_INTERVAL): int,
             vol.Optional(CONF_STATISTICS_DAYS, default=DEFAULT_STATISTICS_DAYS): int,
         })
+
         return self.async_show_form(
             step_id="options_stats",
             data_schema=data_schema,
             errors=errors
         )
 
-    async def async_step_options_geo(self, user_input=None):
-        """
-        Step 3: IP geolocation toggle, only shown if user toggled stats on in step2.
-        If stats was off or remained off, we skip this step entirely.
-        """
-        errors = {}
-        if user_input is not None:
-            self._flow_data["enable_ip_geo"] = user_input.get(CONF_ENABLE_IP_GEOLOCATION, False)
-            return self._create_entry()
-
-        data_schema = vol.Schema({
-            vol.Optional(CONF_ENABLE_IP_GEOLOCATION, default=False): bool,
-        })
-        return self.async_show_form(
-            step_id="options_geo",
-            data_schema=data_schema,
-            errors=errors,
-        )
 
     def _create_entry(self):
         """
@@ -180,7 +148,7 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_ENABLE_STATISTICS: self._flow_data.get("enable_statistics", False),
                 CONF_STATISTICS_INTERVAL: self._flow_data.get("stats_interval", DEFAULT_STATISTICS_INTERVAL),
                 CONF_STATISTICS_DAYS: self._flow_data.get("stats_days", DEFAULT_STATISTICS_DAYS),
-                CONF_ENABLE_IP_GEOLOCATION: self._flow_data.get("enable_ip_geo", False),
+                CONF_ENABLE_IP_GEOLOCATION: self._flow_data.get(CONF_ENABLE_IP_GEOLOCATION, False),
             },
         )
 
@@ -192,47 +160,27 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
     """
-    Post-install reconfiguration (Configure) flow.
-    We'll do two steps:
-      - step_init => main fields
-      - step_geo => only if user toggled stats from off->on
-        then we show IP geolocation toggle
-    If stats was already on or remains off, we skip step_geo.
+    Single-step reconfiguration (Configure) flow:
+    Show the same options as in the install step2, all in one form.
     """
     def __init__(self, config_entry):
         self._config_entry = config_entry
         self._initial_opts = dict(config_entry.options)
-        # track if stats was on
-        self._was_stats_on = self._initial_opts.get(CONF_ENABLE_STATISTICS, False)
-        # we store partial updates in self._updated
         self._updated = dict(self._initial_opts)
-        self._show_geo_step = False
 
     async def async_step_init(self, user_input=None):
-        """
-        Step1: same fields as step2 in the install flow,
-        plus check if stats toggled off->on => step_geo
-        """
+        """Display and handle the options form."""
         if user_input is not None:
-            # store them
             self._updated[CONF_SESSION_INTERVAL] = user_input.get(CONF_SESSION_INTERVAL, DEFAULT_SESSION_INTERVAL)
-            self._updated[CONF_NUM_SENSORS] = user_input.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
-            self._updated[CONF_ADVANCED_ATTRIBUTES] = user_input.get(CONF_ADVANCED_ATTRIBUTES, False)
-            self._updated[CONF_ENABLE_STATISTICS] = user_input.get(CONF_ENABLE_STATISTICS, False)
-            self._updated[CONF_STATISTICS_INTERVAL] = user_input.get(CONF_STATISTICS_INTERVAL, DEFAULT_STATISTICS_INTERVAL)
-            self._updated[CONF_STATISTICS_DAYS] = user_input.get(CONF_STATISTICS_DAYS, DEFAULT_STATISTICS_DAYS)
+            self._updated[CONF_NUM_SENSORS]      = user_input.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
+            self._updated[CONF_ENABLE_IP_GEOLOCATION] = user_input.get(CONF_ENABLE_IP_GEOLOCATION, False)
+            self._updated[CONF_ADVANCED_ATTRIBUTES]   = user_input.get(CONF_ADVANCED_ATTRIBUTES, False)
+            self._updated[CONF_ENABLE_STATISTICS]     = user_input.get(CONF_ENABLE_STATISTICS, False)
+            self._updated[CONF_STATISTICS_INTERVAL]   = user_input.get(CONF_STATISTICS_INTERVAL, DEFAULT_STATISTICS_INTERVAL)
+            self._updated[CONF_STATISTICS_DAYS]       = user_input.get(CONF_STATISTICS_DAYS, DEFAULT_STATISTICS_DAYS)
 
-            # check if stats was off, now on => show geo step
-            old_stats = self._was_stats_on
-            new_stats = self._updated[CONF_ENABLE_STATISTICS]
-            if (not old_stats) and new_stats:
-                self._show_geo_step = True
-                return await self.async_step_geo()
-
-            # if stats was on, or remains off, finalize immediately
             return self.async_create_entry(title="", data=self._updated)
 
-        # show form
         data_schema = vol.Schema({
             vol.Required(
                 CONF_SESSION_INTERVAL,
@@ -243,12 +191,16 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
                 default=self._initial_opts.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
             ): int,
             vol.Optional(
+                CONF_ENABLE_IP_GEOLOCATION,
+                default=self._initial_opts.get(CONF_ENABLE_IP_GEOLOCATION, False)
+            ): bool,
+            vol.Optional(
                 CONF_ADVANCED_ATTRIBUTES,
                 default=self._initial_opts.get(CONF_ADVANCED_ATTRIBUTES, False)
             ): bool,
             vol.Optional(
                 CONF_ENABLE_STATISTICS,
-                default=self._was_stats_on
+                default=self._initial_opts.get(CONF_ENABLE_STATISTICS, False)
             ): bool,
             vol.Optional(
                 CONF_STATISTICS_INTERVAL,
@@ -260,21 +212,3 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
             ): int,
         })
         return self.async_show_form(step_id="init", data_schema=data_schema)
-
-    async def async_step_geo(self, user_input=None):
-        """
-        Step2 in OptionsFlow: only if user toggled stats off->on now.
-        show IP geolocation toggle.
-        """
-        if user_input is not None:
-            self._updated[CONF_ENABLE_IP_GEOLOCATION] = user_input.get(CONF_ENABLE_IP_GEOLOCATION, False)
-            return self.async_create_entry(title="", data=self._updated)
-
-        desc = "By enabling IP Geolocation, you consent to sending user IP addresses to a geolocation service."
-        data_schema = vol.Schema({
-            vol.Optional(
-                CONF_ENABLE_IP_GEOLOCATION,
-                default=self._initial_opts.get(CONF_ENABLE_IP_GEOLOCATION, False)
-            ): bool
-        })
-        return self.async_show_form(step_id="geo", data_schema=data_schema)
