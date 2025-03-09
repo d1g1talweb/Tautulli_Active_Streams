@@ -115,6 +115,27 @@ class TautulliAPI:
         if not resp:
             return {}
         return resp.get("response", {}).get("data", {})
+        
+        
+    async def get_geoip_lookup(self, ip_address: str) -> dict:
+        """
+        Retrieve geolocation data from Tautulli for the given IP address.
+        Tautulli must have GeoIP set up.
+        Returns a dict with that "data" subobject or {} on error.
+        """
+        # We'll call the base method to do Tautulli API:
+        params = {"ip_address": ip_address}
+        resp = await self._call_tautulli("get_geoip_lookup", params=params)
+        if not resp:
+            return {}
+
+        # e.g., resp["response"]["data"] might be the relevant part:
+        response_data = resp.get("response", {})
+        if response_data.get("result") == "success":
+            return response_data.get("data", {})
+        else:
+            return {}
+
 
     async def terminate_session(self, session_id, message=""):
         """Kill a Tautulli session by session_id."""
