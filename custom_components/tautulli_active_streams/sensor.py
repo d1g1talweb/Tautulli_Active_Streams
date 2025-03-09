@@ -188,6 +188,10 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             "location": session.get("location"),
             "ip_address": session.get("ip_address"),
             "ip_address_public": session.get("ip_address_public"),
+            "geo_city": session.get("geo_city"),
+            "geo_region": session.get("geo_region"),
+            "geo_country": session.get("geo_country"),
+            "geo_code": session.get("geo_code"),
             "local": session.get("local"),
             "relayed": session.get("relayed"),
             "bandwidth": session.get("bandwidth"),
@@ -424,6 +428,7 @@ class TautulliUserStatsSensor(CoordinatorEntity, SensorEntity):
             "most_popular_movie": self._stats.get("most_popular_movie", ""),
             
             # --- Watch Times --- Weekday & Gaps ---
+            "days_since_last_watch": self._stats.get("days_since_last_watch"),
             "preferred_watch_time": self._stats.get("preferred_watch_time", ""),
             "weekday_plays": self._stats.get("weekday_plays", []),
             "watched_morning": self._stats.get("watched_morning", 0),
@@ -447,7 +452,13 @@ class TautulliUserStatsSensor(CoordinatorEntity, SensorEntity):
             "geo_city": self._stats.get("geo_city"),
             "geo_region": self._stats.get("geo_region"),
             "geo_country": self._stats.get("geo_country"),
-            
+            "geo_code": self._stats.get("geo_code"),
+            "geo_lat": self._stats.get("geo_lat"),
+            "geo_lon": self._stats.get("geo_lon"),
+            "geo_continent": self._stats.get("geo_continent"),
+            "geo_postal_code": self._stats.get("geo_postal_code"),
+            "geo_timezone": self._stats.get("geo_timezone"),
+
             # --- LAN vs WAN ---
             "lan_plays": self._stats.get("lan_plays", 0),
             "wan_plays": self._stats.get("wan_plays", 0),
