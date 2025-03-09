@@ -129,9 +129,9 @@ These new features are designed to work seamlessly with automations and will bec
   * Enter your **Tautulli details (URL, API Key)**, 
   * Set the Session Sensor Count and Refresh Interval.
   * Option to use Image Proxy service.
+  * Option to use IP Geolocation?
   * Option to use Advanced Attributes.
   * Option to enable Statistics Service.
-     * if enabled this will give you an option to enable Geo Location for Users.
 
 ---
 
