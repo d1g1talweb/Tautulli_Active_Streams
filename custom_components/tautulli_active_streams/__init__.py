@@ -257,6 +257,13 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
                     "geo_city": None,
                     "geo_region": None,
                     "geo_country": None,
+                    "geo_code": None,
+                    "geo_continent": None,
+                    "geo_latitude": None,
+                    "geo_longitude": None,
+                    "geo_postal_code": None,
+                    "geo_timezone": None,
+                    "geo_accuracy": None,            
                 }
 
             stats = user_stats[user]
@@ -506,43 +513,47 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
             if not ip:
                 continue
     
-            # 1) Get entire geo dict from Tautulli's get_geoip_lookup
+            # 1) Tautulli geo lookup
             geodata = await self._geo_cache.lookup_ip(self.hass, ip)
             if not geodata:
                 continue
     
-            # 2) Parse the lat/long/city/region/country from Tautulli's result
-            lat = geodata.get("latitude")
-            lon = geodata.get("longitude")
+            # 2) For each field Tautulli might return:
             city = geodata.get("city")
             region = geodata.get("region")
             country = geodata.get("country")
+            code = geodata.get("code")
+            continent = geodata.get("continent")
+            postal_code = geodata.get("postal_code")
+            timezone = geodata.get("timezone")
+            accuracy = geodata.get("accuracy")
+            lat = geodata.get("latitude")
+            lon = geodata.get("longitude")
+
+            # 3) Store them in your stats dict
+            stats["geo_city"] = city if city else "Unknown"
+            stats["geo_region"] = region if region else "Unknown"
+            stats["geo_country"] = country if country else "Unknown"
+            stats["geo_code"] = code if code else "Unknown"
+            stats["geo_continent"] = continent if continent else "Unknown"
+            stats["geo_postal_code"] = postal_code if postal_code else "Unknown"
+            stats["geo_timezone"] = timezone if timezone else "Unknown"
+            stats["geo_accuracy"] = accuracy if accuracy else "Unknown"
+            # If you also want lat/lon stored:
+            stats["geo_latitude"] = lat if lat is not None else None
+            stats["geo_longitude"] = lon if lon is not None else None
     
-            # 3) Store them back in stats if you like
-            if lat is not None and lon is not None:
-                stats["latitude"] = lat
-                stats["longitude"] = lon
-    
-            if city:
-                stats["geo_city"] = city
-            if region:
-                stats["geo_region"] = region
-            if country:
-                stats["geo_country"] = country
-    
-            # 3.5) Prepare "last_watched" from your last_stopped_ts if available
+            # 3.5) last_watched
             last_stopped_ts = stats.get("last_stopped_ts")
             last_watched_str = None
             if last_stopped_ts:
                 dt_obj = datetime.fromtimestamp(last_stopped_ts)
-                # Format with 12-hr clock, strip leading zero from the hour if present:
-                raw_str = dt_obj.strftime("%I:%M%p %d-%m-%Y")  # e.g. "02:38PM 12-03-2025"
-                last_watched_str = raw_str.lstrip("0")         # becomes "2:38PM 12-03-2025"
+                raw_str = dt_obj.strftime("%I:%M%p %d-%m-%Y")  # "02:38PM 12-03-2025"
+                last_watched_str = raw_str.lstrip("0")         # "2:38PM 12-03-2025"
     
-            # 4) Create or update the device_tracker in Home Assistant
+            # 4) Also create/update your device_tracker with lat/long, city, region, etc.
             dev_id = f"tautulli_{username.lower().replace(' ', '_').replace('.', '')}"
     
-            # Build the attributes dictionary
             attributes = {
                 "ip_address": ip,
                 "city": city,
@@ -555,7 +566,7 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
             await self.hass.services.async_call(
                 "device_tracker",
                 "see",
-            {
+                {
                     "dev_id": dev_id,
                     "host_name": f"{username}: Tautulli",
                     "gps": (lat, lon) if lat is not None and lon is not None else (0, 0),
@@ -564,6 +575,7 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
                 },
                 blocking=False,
             )
+
 
             
 # --------------- IPGeoCache Example --------------- #
