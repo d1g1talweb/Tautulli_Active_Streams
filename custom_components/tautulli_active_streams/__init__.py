@@ -191,7 +191,7 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
                     after=after_str,
                     order_column="date",
                     order_dir="desc",
-                    length=9999
+                    length=100000
                 )
                 data["history"] = hist_resp
                 data["user_stats"] = self._parse_user_history(hist_resp)
