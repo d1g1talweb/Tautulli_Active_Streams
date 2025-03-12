@@ -830,12 +830,14 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):
         await sessions_coordinator.async_request_refresh()
         await history_coordinator.async_request_refresh()
 
-        # 4) Remove outdated user sensors for any users no longer present in the new data
-        current_stats = history_coordinator.data.get("user_stats", {})
-        await async_remove_outdated_user_sensors(hass, entry, current_stats)
+        # 4) Remove user sensors for all users (Wipe them all)
+        await async_remove_all_user_stats_sensors(hass, entry)  # <-- FIXED
 
-        # 5) Reload so sensor/button code picks up changes or re-adds new user sensors
+        current_stats = history_coordinator.data.get("user_stats", {})
+
+        # 5) Reload so sensor/button code picks up changes or re-adds user sensors
         await hass.config_entries.async_reload(entry.entry_id)
+
 
     else:
         # No major changes => do partial refresh only
@@ -850,8 +852,8 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):
         await history_coordinator.async_request_refresh()
 
         # Remove any user sensors for users who might have disappeared
+        await async_remove_all_user_stats_sensors(hass, entry)
         current_stats = history_coordinator.data.get("user_stats", {})
-        await async_remove_outdated_user_sensors(hass, entry, current_stats)
 
 
 
@@ -868,20 +870,21 @@ async def async_remove_history_button(hass: HomeAssistant, entry: ConfigEntry):
         _LOGGER.debug("Removing the fetch-watch-history button: %s", button_entity_id)
         registry.async_remove(button_entity_id)
 
-
-async def async_remove_outdated_user_sensors(hass: HomeAssistant, entry: ConfigEntry, current_stats: dict):
+async def async_remove_all_user_stats_sensors(hass: HomeAssistant, entry: ConfigEntry):
+    """
+    Remove *all* user-stats sensors for this config entry,
+    ignoring whether Tautulli still has that user or not.
+    """
     from homeassistant.helpers import entity_registry as er
     registry = er.async_get(hass)
-    valid_users = set(current_stats.keys())
 
     entries = er.async_entries_for_config_entry(registry, entry.entry_id)
     for ent in entries:
-        if "_stats_" not in ent.unique_id:
-            continue
-        parts = ent.unique_id.split("_")
-        if len(parts) < 4:
-            continue
-        sensor_username = parts[1]  # second element in unique_id
-        if sensor_username not in valid_users:
-            _LOGGER.debug("Removing outdated user-stats sensor: %s (username=%s)", ent.entity_id, sensor_username)
+        if "_stats_" in ent.unique_id:
+            _LOGGER.debug(
+                "Removing user-stats sensor entity: %s (unique_id: %s)",
+                ent.entity_id,
+                ent.unique_id
+            )
             registry.async_remove(ent.entity_id)
+
