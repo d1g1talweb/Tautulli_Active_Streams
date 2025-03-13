@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timedelta
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.sensor import SensorEntity
@@ -9,6 +10,7 @@ from homeassistant.components.sensor import SensorStateClass, SensorDeviceClass
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
     DOMAIN,
@@ -21,7 +23,13 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-
+def format_seconds_to_min_sec(total_seconds: float) -> str:
+    """Convert seconds into 'Mm Ss' format."""
+    total_seconds = int(total_seconds)
+    minutes = total_seconds // 60
+    secs = total_seconds % 60
+    return f"{minutes}m {secs}s"
+    
 async def async_setup_entry(hass, entry, async_add_entities):
     """
     Set up the Tautulli stream sensors, diagnostic sensors, and user stats sensors
@@ -108,7 +116,13 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"plex_session_{index + 1}_{entry.entry_id}_tautulli"
         self._attr_name = f"Plex Session {index + 1} (Tautulli)"
         self._attr_icon = "mdi:plex"
-
+        
+        # local paused duration tracking
+        self._paused_start = None
+        self._paused_duration_sec = 0
+        self._paused_duration_str = "0m 0s"
+        self._unsub_timer = None
+        
     @property
     def device_info(self):
         return {
@@ -119,6 +133,48 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             "entry_type": "service",
         }
 
+    async def async_added_to_hass(self):
+        """
+        Called when this sensor is added to HA.
+        We set up a per-second timer to update the paused duration.
+        """
+        await super().async_added_to_hass()
+        # NEW: set up a 1s interval callback
+        self._unsub_timer = async_track_time_interval(
+            self.hass, self._update_pause_duration, timedelta(seconds=1)
+        )
+
+    async def async_will_remove_from_hass(self):
+        """
+        Called when removing the sensor, so we cancel our timer.
+        """
+        if self._unsub_timer is not None:
+            self._unsub_timer()
+            self._unsub_timer = None
+        await super().async_will_remove_from_hass()
+
+    async def _update_pause_duration(self, now):
+        """
+        The callback that runs every second.
+        If the stream is paused, we increment our local paused counter.
+        """
+        current_state = self.state.lower()
+
+        if current_state == "paused":
+            if self._paused_start is None:
+                self._paused_start = time.time()
+            elapsed = time.time() - self._paused_start
+            self._paused_duration_sec = int(elapsed)
+            self._paused_duration_str = format_seconds_to_min_sec(self._paused_duration_sec)
+        else:
+            # reset if not paused
+            self._paused_start = None
+            self._paused_duration_sec = 0
+            self._paused_duration_str = "0m 0s"
+
+        # Let HA know we have new attribute values
+        self.async_write_ha_state()
+        
     @property
     def state(self):
         """Return the session's state (e.g., 'playing', 'paused', or STATE_OFF)."""
@@ -169,6 +225,27 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                     "&width=300&height=450&fallback=poster&refresh=true"
                 )
 
+        art_path = session.get("art")  # e.g. "/library/metadata/38861/art/1741659890"
+        art_url = None
+        if base_url and api_key and art_path:
+            if image_proxy:
+                # Local proxy for art (fanart background)
+                art_url = (
+                    f"/api/tautulli/image"
+                    f"?entry_id={self._entry.entry_id}"
+                    f"&img={art_path}"
+                    "&width=1920&height=1080&fallback=art&refresh=true"
+                )
+            else:
+                # Direct Tautulli URL for art
+                art_url = (
+                    f"{base_url}/api/v2"
+                    f"?apikey={api_key}"
+                    f"&cmd=pms_image_proxy"
+                    f"&img={art_path}"
+                    "&width=1920&height=1080&fallback=art&refresh=true"
+                )
+        
         # Basic attributes
         attributes.update({
             "user": session.get("user"),
@@ -178,6 +255,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             "grandparent_thumb": session.get("grandparent_thumb"),
             "thumb": session.get("thumb"),
             "image_url": image_url,
+            "art_url": art_url,
             "parent_media_index": session.get("parent_media_index"),
             "media_index": session.get("media_index"),
             "year": session.get("year"),
@@ -270,7 +348,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             "stream_duration": formatted_duration,
             "stream_remaining": formatted_remaining,
             "stream_eta": formatted_eta,
-            "Stream_paused_duration": session.get("Stream_paused_duration"),
+            "Stream_paused_duration": self._paused_duration_str,
             "stream_video_resolution": session.get("stream_video_resolution"),
             "stream_container": session.get("stream_container"),
             "stream_bitrate": session.get("stream_bitrate"),
