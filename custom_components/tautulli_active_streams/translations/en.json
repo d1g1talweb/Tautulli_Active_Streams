@@ -30,7 +30,7 @@
     "step": {
       "init": {
         "title": "Tautulli Active Streams Options",
-        "description": "Changes apply seamlessly without a Home Assistant restart.\n\nWhen IP geolocation is enabled, Tautulli's service will query the IP addresses of active sessions and user statistics. This allows for geographic insights and tracking of streaming locations.",
+        "description": "Changes apply seamlessly without a Home Assistant restart.\n",
         "data": {
           "session_interval": "API update frequency for active streams (seconds).",
           "statistics_interval": "API update frequency for watch-history stats (seconds).",
