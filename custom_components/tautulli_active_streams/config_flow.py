@@ -113,6 +113,7 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional(CONF_SESSION_INTERVAL, default=DEFAULT_SESSION_INTERVAL): int,
             vol.Optional(CONF_NUM_SENSORS, default=DEFAULT_NUM_SENSORS): int,
             vol.Optional(CONF_ENABLE_IP_GEOLOCATION, default=False): bool,
+            vol.Optional(CONF_IMAGE_PROXY, default=user_input.get(CONF_IMAGE_PROXY, False)): bool,
             vol.Optional(CONF_ADVANCED_ATTRIBUTES, default=False): bool,
             vol.Optional(CONF_ENABLE_STATISTICS, default=False): bool,
             vol.Optional(CONF_STATISTICS_INTERVAL, default=DEFAULT_STATISTICS_INTERVAL): int,
