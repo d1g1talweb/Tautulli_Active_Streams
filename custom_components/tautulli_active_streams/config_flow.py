@@ -196,6 +196,10 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
                 default=self._initial_opts.get(CONF_ENABLE_IP_GEOLOCATION, False)
             ): bool,
             vol.Optional(
+                CONF_IMAGE_PROXY,
+                default=self._initial_opts.get(CONF_IMAGE_PROXY, False)
+            ): bool,
+            vol.Optional(
                 CONF_ADVANCED_ATTRIBUTES,
                 default=self._initial_opts.get(CONF_ADVANCED_ATTRIBUTES, False)
             ): bool,
