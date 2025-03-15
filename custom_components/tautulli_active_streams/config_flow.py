@@ -46,7 +46,6 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_URL, default=user_input.get(CONF_URL, "")): str,
             vol.Required(CONF_API_KEY, default=user_input.get(CONF_API_KEY, "")): str,
             vol.Optional(CONF_VERIFY_SSL, default=user_input.get(CONF_VERIFY_SSL, True)): bool,
-            vol.Optional(CONF_IMAGE_PROXY, default=user_input.get(CONF_IMAGE_PROXY, False)): bool,
         })
         return self.async_show_form(
             step_id="user",
@@ -81,7 +80,6 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._flow_data["url"] = url
             self._flow_data["api_key"] = user_input[CONF_API_KEY]
             self._flow_data["verify_ssl"] = verify_ssl
-            self._flow_data["image_proxy"] = user_input.get(CONF_IMAGE_PROXY, False)
 
             # go to step2
             return await self.async_step_options_stats()
@@ -91,29 +89,29 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_options_stats(self, user_input=None):
         """
         Step 2: Show the rest of the options including IP geolocation,
-        advanced attributes, and statistics.
+        advanced attributes, statistics, and image_proxy.
         """
+        # IMPORTANT: guard against None to avoid Unknown Error
+        user_input = user_input or {}
         errors = {}
-        if user_input is not None:
+
+        if user_input:
             self._flow_data["session_interval"] = user_input.get(CONF_SESSION_INTERVAL, DEFAULT_SESSION_INTERVAL)
             self._flow_data["num_sensors"] = user_input.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
             self._flow_data["advanced_attrs"] = user_input.get(CONF_ADVANCED_ATTRIBUTES, False)
-
-            # IP Geolocation toggle
+            self._flow_data["image_proxy"] = user_input.get(CONF_IMAGE_PROXY, False)
             self._flow_data[CONF_ENABLE_IP_GEOLOCATION] = user_input.get(CONF_ENABLE_IP_GEOLOCATION, False)
-
-            # Statistics
             self._flow_data["enable_statistics"] = user_input.get(CONF_ENABLE_STATISTICS, False)
             self._flow_data["stats_interval"] = user_input.get(CONF_STATISTICS_INTERVAL, DEFAULT_STATISTICS_INTERVAL)
             self._flow_data["stats_days"] = user_input.get(CONF_STATISTICS_DAYS, DEFAULT_STATISTICS_DAYS)
 
             return self._create_entry()
-
+            
         data_schema = vol.Schema({
             vol.Optional(CONF_SESSION_INTERVAL, default=DEFAULT_SESSION_INTERVAL): int,
             vol.Optional(CONF_NUM_SENSORS, default=DEFAULT_NUM_SENSORS): int,
             vol.Optional(CONF_ENABLE_IP_GEOLOCATION, default=False): bool,
-            vol.Optional(CONF_IMAGE_PROXY, default=user_input.get(CONF_IMAGE_PROXY, False)): bool,
+            vol.Optional(CONF_IMAGE_PROXY, default=False): bool,
             vol.Optional(CONF_ADVANCED_ATTRIBUTES, default=False): bool,
             vol.Optional(CONF_ENABLE_STATISTICS, default=False): bool,
             vol.Optional(CONF_STATISTICS_INTERVAL, default=DEFAULT_STATISTICS_INTERVAL): int,
@@ -129,7 +127,7 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def _create_entry(self):
         """
-        Final: combine user input from step1 + step2 (+ step3) into a single config entry.
+        Final: combine user input from step1 + step2 into a single config entry.
         - connection info => entry.data
         - everything else => entry.options
         """
@@ -152,7 +150,7 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_ENABLE_IP_GEOLOCATION: self._flow_data.get(CONF_ENABLE_IP_GEOLOCATION, False),
             },
         )
-
+        
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
@@ -162,7 +160,7 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
     """
     Single-step reconfiguration (Configure) flow:
-    Show the same options as in the install step2, all in one form.
+    Show the same options as in the install step2.
     """
     def __init__(self, config_entry):
         self._config_entry = config_entry
@@ -173,12 +171,13 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
         """Display and handle the options form."""
         if user_input is not None:
             self._updated[CONF_SESSION_INTERVAL] = user_input.get(CONF_SESSION_INTERVAL, DEFAULT_SESSION_INTERVAL)
-            self._updated[CONF_NUM_SENSORS]      = user_input.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
+            self._updated[CONF_NUM_SENSORS] = user_input.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
             self._updated[CONF_ENABLE_IP_GEOLOCATION] = user_input.get(CONF_ENABLE_IP_GEOLOCATION, False)
-            self._updated[CONF_ADVANCED_ATTRIBUTES]   = user_input.get(CONF_ADVANCED_ATTRIBUTES, False)
-            self._updated[CONF_ENABLE_STATISTICS]     = user_input.get(CONF_ENABLE_STATISTICS, False)
-            self._updated[CONF_STATISTICS_INTERVAL]   = user_input.get(CONF_STATISTICS_INTERVAL, DEFAULT_STATISTICS_INTERVAL)
-            self._updated[CONF_STATISTICS_DAYS]       = user_input.get(CONF_STATISTICS_DAYS, DEFAULT_STATISTICS_DAYS)
+            self._updated[CONF_IMAGE_PROXY] = user_input.get(CONF_IMAGE_PROXY, False)
+            self._updated[CONF_ADVANCED_ATTRIBUTES] = user_input.get(CONF_ADVANCED_ATTRIBUTES, False)
+            self._updated[CONF_ENABLE_STATISTICS] = user_input.get(CONF_ENABLE_STATISTICS, False)
+            self._updated[CONF_STATISTICS_INTERVAL] = user_input.get(CONF_STATISTICS_INTERVAL, DEFAULT_STATISTICS_INTERVAL)
+            self._updated[CONF_STATISTICS_DAYS] = user_input.get(CONF_STATISTICS_DAYS, DEFAULT_STATISTICS_DAYS)
 
             return self.async_create_entry(title="", data=self._updated)
 
@@ -216,4 +215,5 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
                 default=self._initial_opts.get(CONF_STATISTICS_DAYS, DEFAULT_STATISTICS_DAYS)
             ): int,
         })
+
         return self.async_show_form(step_id="init", data_schema=data_schema)
