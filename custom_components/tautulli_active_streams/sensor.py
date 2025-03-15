@@ -303,8 +303,15 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             formatted_remaining = f"{remain_hours}:{remain_minutes:02d}:{remain_secs:02d}"
 
             # ETA
+            # Calculate ETA
             eta = datetime.now() + timedelta(seconds=remain_seconds)
-            formatted_eta = eta.strftime("%I:%M %p").lower()
+            
+            # Get hour without leading zero, but still handle "12" correctly
+            hour_12 = eta.strftime("%I").lstrip("0") or "12"
+            minute = eta.strftime("%M")
+            ampm = eta.strftime("%p").lower()
+            
+            formatted_eta = f"{hour_12}:{minute} {ampm}"
         else:
             formatted_remaining = None
             formatted_eta = None
