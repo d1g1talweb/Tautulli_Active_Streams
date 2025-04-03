@@ -11,26 +11,29 @@
           "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate."
         }
       },
-      "options_stats": {
+      "options": {
         "title": "Tautulli Advanced Setup",
         "description": "Configure how often to poll Tautulli, how many sensors to create, and whether to enable watch-history statistics.",
         "data": {
           "session_interval": "How often (in seconds) to refresh active streams? (Default: 4).",
           "statistics_interval": "How often (in seconds) to refresh watch-history for statistics? (Default: 1800).",
           "num_sensors": "Number of sensors to create for monitoring active streams.",
-          "enable_ip_geolocation": "Enable IP Geolocation?",
           "image_proxy": "Use Image Proxy? (Proxy images via Home Assistant).",
+          "enable_ip_geolocation": "Enable IP Geolocation? (Use IP-to-location mapping from Tautulli).",
           "advanced_attributes": "Enable Advanced Attributes? (Extra session details).",
-          "enable_statistics": "Enable Tautulli Statistics? (Default 30 days history)."
+          "enable_statistics": "Enable Tautulli Statistics? (Default 30 days history).",
+          "stats_month_to_date": "Use Month-to-Date? (Ignores day range and starts from the 1st of the current month).",
+          "statistics_days": "Number of days to include (ignored when Month-to-Date is enabled)."
         }
       }
     }
   },
+
   "options": {
     "step": {
       "init": {
         "title": "Tautulli Active Streams Options",
-        "description": "Changes apply seamlessly without a Home Assistant restart.\n",
+        "description": "Changes apply seamlessly without a Home Assistant restart.",
         "data": {
           "session_interval": "API update frequency for active streams (seconds).",
           "statistics_interval": "API update frequency for watch-history stats (seconds).",
@@ -38,13 +41,15 @@
           "image_proxy": "Use Image Proxy? (Proxy images via Home Assistant).",
           "enable_ip_geolocation": "Enable IP Geolocation?",
           "advanced_attributes": "Include advanced session attributes?",
-          "enable_statistics": "Enable watch-history statistics?",
-          "statistics_days": "Number of days to fetch watch-history from Tautulli."
+          "enable_statistics": "Enable Tautulli Statistics?",
+          "stats_month_to_date": "Use Month-to-Date? (Ignores day range and starts from the 1st of the current month).",
+          "statistics_days": "Number of days to include (ignored when Month-to-Date is enabled)."
         }
       }
     }
   },
   "error": {
-    "cannot_connect": "Unable to connect to Tautulli. Please check your URL, API key, and network connectivity."
+    "cannot_connect": "Unable to connect to Tautulli. Please check your URL, API key, and network connectivity.",
+    "invalid_api_key": "The API key appears to be invalid. Please double-check it in Tautulli’s Web Interface."
   }
 }
