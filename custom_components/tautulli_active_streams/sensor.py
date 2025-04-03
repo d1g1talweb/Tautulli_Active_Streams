@@ -1,118 +1,593 @@
 import logging
-import asyncio
-import voluptuous as vol
-import homeassistant.helpers.config_validation as cv
-from homeassistant.core import HomeAssistant, ServiceCall
+import time
+from datetime import datetime, timedelta
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.const import STATE_OFF, CONF_URL, CONF_API_KEY
+from homeassistant.helpers.entity import EntityCategory
+from homeassistant.components.sensor import SensorStateClass, SensorDeviceClass
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.event import async_track_time_interval
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    DEFAULT_NUM_SENSORS,
+    CONF_NUM_SENSORS,
+    CONF_ENABLE_STATISTICS,
+    CONF_IMAGE_PROXY,
+    CONF_ADVANCED_ATTRIBUTES,  # <-- Make sure these are imported
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-KILL_ALL_SCHEMA = vol.Schema({
-    vol.Optional("message", default="Stream ended by admin."): cv.string,
-})
+def format_seconds_to_min_sec(total_seconds: float) -> str:
+    """Convert seconds into 'Mm Ss' format."""
+    total_seconds = int(total_seconds)
+    minutes = total_seconds // 60
+    secs = total_seconds % 60
+    return f"{minutes}m {secs}s"
+    
+async def async_setup_entry(hass, entry, async_add_entities):
+    """
+    Set up the Tautulli stream sensors, diagnostic sensors, and user stats sensors
+    using two different coordinators:
+      - sessions_coordinator for sessions/diagnostics
+      - history_coordinator for user-based stats
+    """
 
-KILL_USER_SCHEMA = vol.Schema({
-    vol.Required("user"): cv.string,
-    vol.Optional("message", default="Stream ended by admin."): cv.string,
-})
+    # Retrieve both coordinators
+    data = hass.data[DOMAIN][entry.entry_id]
+    sessions_coordinator = data["sessions_coordinator"]
+    history_coordinator = data["history_coordinator"]
 
-KILL_SESSION_SCHEMA = vol.Schema({
-    vol.Required("session_id"): cv.string,
-    vol.Optional("message", default="Stream ended by admin."): cv.string,
-})
+    # Number of active stream sensors to create
+    num_sensors = entry.options.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
+
+    #
+    # 1) Create a sensor for each "active stream" slot
+    #
+    session_sensors = []
+    for i in range(num_sensors):
+        session_sensors.append(
+            TautulliStreamSensor(sessions_coordinator, entry, i)
+        )
+
+    #
+    # 2) Create diagnostic sensors (read from sessions_coordinator)
+    #
+    diagnostic_sensors = [
+        TautulliDiagnosticSensor(sessions_coordinator, entry, "stream_count"),
+        TautulliDiagnosticSensor(sessions_coordinator, entry, "stream_count_direct_play"),
+        TautulliDiagnosticSensor(sessions_coordinator, entry, "stream_count_direct_stream"),
+        TautulliDiagnosticSensor(sessions_coordinator, entry, "stream_count_transcode"),
+        TautulliDiagnosticSensor(sessions_coordinator, entry, "total_bandwidth"),
+        TautulliDiagnosticSensor(sessions_coordinator, entry, "lan_bandwidth"),
+        TautulliDiagnosticSensor(sessions_coordinator, entry, "wan_bandwidth"),
+    ]
+
+    #
+    # 3) (Optional) Create user stats sensors if "enable_statistics" is on
+    #
+    stats_sensors = []
+    if entry.options.get(CONF_ENABLE_STATISTICS, False):
+        user_stats = history_coordinator.data.get("user_stats", {})
+        if user_stats:
+            i = 0
+            for username, stats_dict in user_stats.items():
+                stats_sensors.append(
+                    TautulliUserStatsSensor(
+                        coordinator=history_coordinator,
+                        entry=entry,
+                        username=username,
+                        stats=stats_dict,
+                        index=i
+                    )
+                )
+                i += 1
+        else:
+            _LOGGER.debug(
+                "enable_statistics is True, but no user_stats found in history_coordinator.data."
+            )
+
+    # Add everything to Home Assistant
+    async_add_entities(session_sensors, True)
+    async_add_entities(diagnostic_sensors, True)
+    async_add_entities(stats_sensors, True)
+
+    # Listen for changes to options so we can remove or reload sensors if needed
+#    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
 
-async def async_setup_kill_stream_services(hass: HomeAssistant, entry, api) -> None:
-    """Register kill-stream services for Tautulli Active Streams."""
+class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
+    """
+    Representation of a Tautulli stream sensor,
+    reading from the sessions_coordinator for session data.
+    """
 
-    # This dictionary has keys like {"api": ..., "sessions_coordinator": ..., "history_coordinator": ...}
-    data_dict = hass.data[DOMAIN].get(entry.entry_id)
-    if not data_dict:
-        _LOGGER.error("No integration data found for entry_id=%s, cannot register kill-stream services.", entry.entry_id)
-        return
+    def __init__(self, coordinator, entry, index):
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._entry = entry
+        self._index = index
+        # The unique_id ends with _tautulli so the removal code can match
+        self._attr_unique_id = f"plex_session_{index + 1}_{entry.entry_id}_tautulli"
+        self._attr_name = f"Plex Session {index + 1} (Tautulli)"
+        self._attr_icon = "mdi:plex"
+        
+        # local paused duration tracking
+        self._paused_start = None
+        self._paused_duration_sec = 0
+        self._paused_duration_str = "0m 0s"
+        self._unsub_timer = None
+        
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, f"{self._entry.entry_id}_active_streams")},
+            "name": f"{self._entry.title} Active Streams",
+            "manufacturer": "Richardvaio",
+            "model": "Tautulli Active Streams",
+            "entry_type": "service",
+        }
 
-    sessions_coordinator = data_dict.get("sessions_coordinator")
-    if not sessions_coordinator:
-        _LOGGER.error("No sessions_coordinator found for entry_id=%s, cannot register kill-stream services.", entry.entry_id)
-        return
+    async def async_added_to_hass(self):
+        """
+        Called when this sensor is added to HA.
+        We set up a per-second timer to update the paused duration.
+        """
+        await super().async_added_to_hass()
+        # NEW: set up a 1s interval callback
+        self._unsub_timer = async_track_time_interval(
+            self.hass, self._update_pause_duration, timedelta(seconds=1)
+        )
 
-    async def handle_kill_all_streams(call: ServiceCall) -> None:
-        message = call.data.get("message")
-        sessions = sessions_coordinator.data.get("sessions", [])
-        if not sessions:
-            _LOGGER.debug("No active sessions found to kill.")
-            return
+    async def async_will_remove_from_hass(self):
+        """
+        Called when removing the sensor, so we cancel our timer.
+        """
+        if self._unsub_timer is not None:
+            self._unsub_timer()
+            self._unsub_timer = None
+        await super().async_will_remove_from_hass()
 
-        _LOGGER.info("Terminating %d active sessions. message=%s", len(sessions), message)
-        tasks = []
+    async def _update_pause_duration(self, now):
+        """
+        The callback that runs every second.
+        If the stream is paused, we increment our local paused counter.
+        """
+        current_state = self.state.lower()
+
+        if current_state == "paused":
+            if self._paused_start is None:
+                self._paused_start = time.time()
+            elapsed = time.time() - self._paused_start
+            self._paused_duration_sec = int(elapsed)
+            self._paused_duration_str = format_seconds_to_min_sec(self._paused_duration_sec)
+        else:
+            # reset if not paused
+            self._paused_start = None
+            self._paused_duration_sec = 0
+            self._paused_duration_str = "0m 0s"
+
+        # Let HA know we have new attribute values
+        self.async_write_ha_state()
+        
+    @property
+    def state(self):
+        """Return the session's state (e.g., 'playing', 'paused', or STATE_OFF)."""
+        sessions = self.coordinator.data.get("sessions", [])
+        if len(sessions) > self._index:
+            return sessions[self._index].get("state", STATE_OFF)
+        return STATE_OFF
+
+    @property
+    def extra_state_attributes(self):
+        """
+        Return extra attributes for the sensor (basic or advanced),
+        including an image_url if we have a valid base_url & api_key.
+        """
+        sessions = self.coordinator.data.get("sessions", [])
+        if len(sessions) <= self._index:
+            return {}
+
+        session = sessions[self._index]
+
+        base_url = self._entry.data.get(CONF_URL)
+        api_key = self._entry.data.get(CONF_API_KEY)
+        # Retrieve from options using our constants:
+        image_proxy = self._entry.options.get(CONF_IMAGE_PROXY, False)
+        advanced = self._entry.options.get(CONF_ADVANCED_ATTRIBUTES, False)
+
+        attributes = {}
+
+        # Build an image URL if base_url & api_key
+        thumb_url = session.get("grandparent_thumb") or session.get("thumb")
+        image_url = None
+        if base_url and api_key and thumb_url:
+            if image_proxy:
+                # Local proxy
+                image_url = (
+                    f"/api/tautulli/image"
+                    f"?entry_id={self._entry.entry_id}"
+                    f"&img={thumb_url}"
+                    "&width=300&height=450&fallback=poster&refresh=true"
+                )
+            else:
+                # Direct Tautulli URL
+                image_url = (
+                    f"{base_url}/api/v2"
+                    f"?apikey={api_key}"
+                    f"&cmd=pms_image_proxy"
+                    f"&img={thumb_url}"
+                    "&width=300&height=450&fallback=poster&refresh=true"
+                )
+
+        art_path = session.get("art")  # e.g. "/library/metadata/38861/art/1741659890"
+        art_url = None
+        if base_url and api_key and art_path:
+            if image_proxy:
+                # Local proxy for art (fanart background)
+                art_url = (
+                    f"/api/tautulli/image"
+                    f"?entry_id={self._entry.entry_id}"
+                    f"&img={art_path}"
+                    "&width=1920&height=1080&fallback=art&refresh=true"
+                )
+            else:
+                # Direct Tautulli URL for art
+                art_url = (
+                    f"{base_url}/api/v2"
+                    f"?apikey={api_key}"
+                    f"&cmd=pms_image_proxy"
+                    f"&img={art_path}"
+                    "&width=1920&height=1080&fallback=art&refresh=true"
+                )
+        
+        # Basic attributes
+        attributes.update({
+            "user": session.get("user"),
+            "progress_percent": session.get("progress_percent"),
+            "media_type": session.get("media_type"),
+            "full_title": session.get("full_title"),
+            "grandparent_thumb": session.get("grandparent_thumb"),
+            "thumb": session.get("thumb"),
+            "image_url": image_url,
+            "art_url": art_url,
+            "parent_media_index": session.get("parent_media_index"),
+            "media_index": session.get("media_index"),
+            "year": session.get("year"),
+            "product": session.get("product"),
+            "player": session.get("player"),
+            "device": session.get("device"),
+            "platform": session.get("platform"),
+            "location": session.get("location"),
+            "ip_address": session.get("ip_address"),
+            "ip_address_public": session.get("ip_address_public"),
+            "geo_city": session.get("geo_city"),
+            "geo_region": session.get("geo_region"),
+            "geo_country": session.get("geo_country"),
+            "geo_code": session.get("geo_code"),
+            "local": session.get("local"),
+            "relayed": session.get("relayed"),
+            "bandwidth": session.get("bandwidth"),
+            "video_resolution": session.get("video_resolution"),
+            "stream_video_resolution": session.get("stream_video_resolution"),
+            "transcode_decision": session.get("transcode_decision"),
+        })
+
+        # If advanced attributes are off, return now
+        if not advanced:
+            return attributes
+
+        # Advanced is on:
+        # Convert stream_duration from ms -> H:MM:SS
+        if session.get("stream_duration"):
+            total_ms = float(session["stream_duration"])
+            hours = int(total_ms // 3600000)
+            minutes = int((total_ms % 3600000) // 60000)
+            seconds = int((total_ms % 60000) // 1000)
+            formatted_duration = f"{hours}:{minutes:02d}:{seconds:02d}"
+        else:
+            formatted_duration = None
+
+        # Calculate remaining time
+        if session.get("view_offset") and session.get("stream_duration"):
+            remain_ms = float(session["stream_duration"]) - float(session["view_offset"])
+            remain_seconds = remain_ms / 1000
+            remain_hours = int(remain_seconds // 3600)
+            remain_minutes = int((remain_seconds % 3600) // 60)
+            remain_secs = int(remain_seconds % 60)
+            formatted_remaining = f"{remain_hours}:{remain_minutes:02d}:{remain_secs:02d}"
+
+            # ETA
+            # Calculate ETA
+            eta = datetime.now() + timedelta(seconds=remain_seconds)
+            
+            # Get hour without leading zero, but still handle "12" correctly
+            hour_12 = eta.strftime("%I").lstrip("0") or "12"
+            minute = eta.strftime("%M")
+            ampm = eta.strftime("%p").lower()
+            
+            formatted_eta = f"{hour_12}:{minute} {ampm}"
+        else:
+            formatted_remaining = None
+            formatted_eta = None
+
+        # Additional advanced keys
+        attributes.update({
+            "user_friendly_name": session.get("friendly_name"),
+            "username": session.get("username"),
+            "user_thumb": session.get("user_thumb"),
+            "session_id": session.get("session_id"),
+            "library_name": session.get("library_name"),
+            "grandparent_title": session.get("grandparent_title"),
+            "title": session.get("title"),
+            "container": session.get("container"),
+            "aspect_ratio": session.get("aspect_ratio"),
+            "video_codec": session.get("video_codec"),
+            "video_framerate": session.get("video_framerate"),
+            "video_profile": session.get("video_profile"),
+            "video_dovi_profile": session.get("video_dovi_profile"),
+            "video_dynamic_range": session.get("video_dynamic_range"),
+            "video_color_space": session.get("video_color_space"),
+            "audio_codec": session.get("audio_codec"),
+            "audio_channels": session.get("audio_channels"),
+            "audio_channel_layout": session.get("audio_channel_layout"),
+            "audio_profile": session.get("audio_profile"),
+            "audio_bitrate": session.get("audio_bitrate"),
+            "audio_language": session.get("audio_language"),
+            "audio_language_code": session.get("audio_language_code"),
+            "subtitle_language": session.get("subtitle_language"),
+            "container_decision": session.get("stream_container_decision"),
+            "audio_decision": session.get("audio_decision"),
+            "video_decision": session.get("video_decision"),
+            "subtitle_decision": session.get("subtitle_decision"),
+            "transcode_container": session.get("transcode_container"),
+            "transcode_audio_codec": session.get("transcode_audio_codec"),
+            "transcode_video_codec": session.get("transcode_video_codec"),
+            "transcode_throttled": session.get("transcode_throttled"),
+            "transcode_progress": session.get("transcode_progress"),
+            "transcode_speed": session.get("transcode_speed"),
+            "stream_start_time": session.get("start_time"),
+            "stream_duration": formatted_duration,
+            "stream_remaining": formatted_remaining,
+            "stream_eta": formatted_eta,
+            "Stream_paused_duration": self._paused_duration_str,
+            "stream_video_resolution": session.get("stream_video_resolution"),
+            "stream_container": session.get("stream_container"),
+            "stream_bitrate": session.get("stream_bitrate"),
+            "stream_video_bitrate": session.get("stream_video_bitrate"),
+            "stream_video_codec": session.get("stream_video_codec"),
+            "stream_video_framerate": session.get("stream_video_framerate"),
+            "stream_video_full_resolution": session.get("stream_video_full_resolution"),
+            "stream_video_dovi_profile": session.get("stream_video_dovi_profile"),
+            "stream_video_decision": session.get("stream_video_decision"),
+            "stream_audio_bitrate": session.get("stream_audio_bitrate"),
+            "stream_audio_codec": session.get("stream_audio_codec"),
+            "stream_audio_channels": session.get("stream_audio_channels"),
+            "stream_audio_channel_layout": session.get("stream_audio_channel_layout"),
+            "stream_audio_language": session.get("stream_audio_language"),
+            "stream_audio_language_code": session.get("stream_audio_language_code"),
+        })
+
+        return attributes
+
+
+class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
+    """
+    Representation of a Tautulli diagnostic sensor,
+    also using the sessions_coordinator to read 'diagnostics'.
+    """
+
+    def __init__(self, coordinator, entry, metric):
+        """Initialize the diagnostic sensor."""
+        super().__init__(coordinator)
+        self._entry = entry
+        self._metric = metric
+        self._attr_unique_id = f"tautulli_{entry.entry_id}_{metric}"
+        self.entity_id = f"sensor.tautulli_{metric}"
+        self._attr_name = f"{metric.replace('_', ' ').title()}"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_device_info = self.device_info
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_device_class = SensorDeviceClass.DATA_SIZE
+        if metric in ["total_bandwidth", "lan_bandwidth", "wan_bandwidth"]:
+            self._attr_native_unit_of_measurement = "Mbps"
+        else:
+            self._attr_native_unit_of_measurement = None
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, f"{self._entry.entry_id}_active_streams")},
+            "name": f"{self._entry.title} Active Streams",
+            "manufacturer": "Richardvaio",
+            "model": "Tautulli Active Streams",
+            "entry_type": "service",
+        }
+
+    @property
+    def state(self):
+        """Return the main diagnostic value from 'diagnostics'."""
+        diagnostics = self.coordinator.data.get("diagnostics", {})
+        raw_value = diagnostics.get(self._metric, 0)
+
+        if self._metric in ["total_bandwidth", "lan_bandwidth", "wan_bandwidth"]:
+            try:
+                return round(float(raw_value) / 1000, 1)
+            except Exception as err:
+                _LOGGER.error("Error converting bandwidth: %s", err)
+                return raw_value
+
+        return raw_value
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional diagnostic attributes (e.g. session list)."""
+        if self._metric != "stream_count":
+            return {}
+        sessions = self.coordinator.data.get("sessions", [])
+        filtered_sessions = []
         for s in sessions:
-            sid = s.get("session_id")
-            if sid:
-                tasks.append(api.terminate_session(sid, message=message))
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        success = sum(1 for r in results if not isinstance(r, Exception))
-        _LOGGER.info("Killed %d/%d sessions successfully", success, len(sessions))
+            filtered_sessions.append({
+                "username": (s.get("username") or "").lower(),
+                "user": (s.get("user") or "").lower(),
+                "full_title": s.get("full_title"),
+                "stream_start_time": s.get("start_time"),
+                "start_time_raw": s.get("start_time_raw"),
+                "Stream_paused_duration_sec": s.get("Stream_paused_duration_sec"),
+                "session_id": s.get("session_id"),
+            })
+        return {"sessions": filtered_sessions}
 
-    async def handle_kill_user_streams(call: ServiceCall) -> None:
-        user = call.data["user"].strip().lower()
-        message = call.data.get("message")
-        sessions = sessions_coordinator.data.get("sessions", [])
-        if not sessions:
-            _LOGGER.debug("No active sessions found to kill by user '%s'.", user)
-            return
+    @property
+    def icon(self):
+        icon_map = {
+            "stream_count": "mdi:plex",
+            "stream_count_direct_play": "mdi:play-circle",
+            "stream_count_direct_stream": "mdi:play-network",
+            "stream_count_transcode": "mdi:cog",
+            "total_bandwidth": "mdi:download-network",
+            "lan_bandwidth": "mdi:lan",
+            "wan_bandwidth": "mdi:wan",
+        }
+        return icon_map.get(self._metric, "mdi:chart-bar")
 
-        matched = []
-        for s in sessions:
-            # Check if the user name is in any of these fields
-            names = [
-                (s.get("user") or "").lower(),
-                (s.get("username") or "").lower(),
-                (s.get("friendly_name") or "").lower(),
-            ]
-            if any(user in x for x in names):
-                matched.append(s)
 
-        if not matched:
-            _LOGGER.debug("No sessions found for user '%s'", user)
-            return
+class TautulliUserStatsSensor(CoordinatorEntity, SensorEntity):
+    """
+    One sensor per user, each with '_stats_' in its unique_id,
+    referencing history_coordinator.data for user_stats.
+    """
 
-        _LOGGER.info("Terminating %d sessions for user '%s'. message=%s", len(matched), user, message)
-        tasks = []
-        for s in matched:
-            sid = s.get("session_id")
-            if sid:
-                tasks.append(api.terminate_session(sid, message=message))
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        success = sum(1 for r in results if not isinstance(r, Exception))
-        _LOGGER.info("Killed %d/%d sessions for user '%s'", success, len(matched), user)
+    def __init__(self, coordinator, entry: ConfigEntry, username: str, stats: dict, index: int):
+        super().__init__(coordinator)
+        self._entry = entry
+        self._username = username
+        self._stats = stats
+        self._index = index
 
-    async def handle_kill_session_stream(call: ServiceCall) -> None:
-        sid = call.data["session_id"].strip()
-        message = call.data.get("message", "Stream ended by admin.")
-        sessions = sessions_coordinator.data.get("sessions", [])
-        if not sessions:
-            _LOGGER.debug("No sessions found to kill.")
-            return
+        # Must have "_stats_" so the removal code can detect it
+        self._attr_unique_id = f"{entry.entry_id}_{username.lower()}_{index}_stats_"
+        self._attr_name = f"{username} Stats"
 
-        if sid not in [x.get("session_id") for x in sessions]:
-            _LOGGER.warning("Session %s not found in active list", sid)
+        # Put these sensors under a separate device named "<Integration Title> Statistics"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{entry.entry_id}_statistics_device")},
+            "name": f"{entry.title} Statistics",
+            "manufacturer": "Richardvaio",
+            "model": "Tautulli Statistics",
+        }
 
-        try:
-            await api.terminate_session(sid, message=message)
-            _LOGGER.info("Terminated session %s", sid)
-        except Exception as exc:
-            _LOGGER.error("Error killing session %s: %s", sid, exc)
+    @property
+    def icon(self) -> str:
+        return "mdi:account"
+        
+    @property
+    def state(self):
+        user_stats = self.coordinator.data["user_stats"].get(self._username, {})
+        return user_stats.get("total_play_duration", "0h 0m")
 
-    # Register the three kill-stream services
-    hass.services.async_register(
-        DOMAIN, "kill_all_streams", handle_kill_all_streams, schema=KILL_ALL_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN, "kill_user_streams", handle_kill_user_streams, schema=KILL_USER_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN, "kill_session_stream", handle_kill_session_stream, schema=KILL_SESSION_SCHEMA
-    )
+    @property
+    def extra_state_attributes(self):
+        """Return watch-history stats from self._stats (parsed from get_history)."""
+        return {
+            # --- Basic Play Counts ---
+            "total_plays": self._stats.get("total_plays", 0),
+            "movie_plays": self._stats.get("movie_plays", 0),
+            "tv_plays": self._stats.get("tv_plays", 0),
 
-    _LOGGER.debug("Tautulli kill-stream services set up for entry_id=%s.", entry.entry_id)
+            # --- Duration & Completion & Pause Metrics ---
+            "total_play_duration": self._stats.get("total_play_duration", "0h 0m"),
+            "total_completion_rate": self._stats.get("total_completion_rate", 0.0),
+            "longest_play": self._stats.get("longest_play", "0h 0m"),
+            "average_play_gap": self._stats.get("average_play_gap", "N/A"),
+            "paused_count": self._stats.get("paused_count", 0),
+            "total_paused_duration": self._stats.get("total_paused_duration", "0h 0m"),
+
+            # --- Popular Titles ---
+            "most_popular_show": self._stats.get("most_popular_show", ""),
+            "most_popular_movie": self._stats.get("most_popular_movie", ""),
+            
+            # --- Watch Times --- Weekday & Gaps ---
+            "days_since_last_watch": self._stats.get("days_since_last_watch"),
+            "preferred_watch_time": self._stats.get("preferred_watch_time", ""),
+            "weekday_plays": self._stats.get("weekday_plays", []),
+            "watched_morning": self._stats.get("watched_morning", 0),
+            "watched_afternoon": self._stats.get("watched_afternoon", 0),
+            "watched_midday": self._stats.get("watched_midday", 0),
+            "watched_evening": self._stats.get("watched_evening", 0),
+            
+            # --- Transcode / Playback Types ---
+            "transcode_count": self._stats.get("transcode_count", 0),
+            "direct_play_count": self._stats.get("direct_play_count", 0),
+            "direct_stream_count": self._stats.get("direct_stream_count", 0),
+            "transcode_percentage": self._stats.get("transcode_percentage", 0.0),
+            "common_transcode_devices": self._stats.get("common_transcode_devices", ""),
+            "last_transcode_date": self._stats.get("last_transcode_date", ""),
+
+            # --- Device Usage ---
+            "most_used_device": self._stats.get("most_used_device", ""),
+            "common_audio_language": self._stats.get("common_audio_language", "Unknown"),
+            
+            # --- Geo Location ---
+            "geo_city": self._stats.get("geo_city"),
+            "geo_region": self._stats.get("geo_region"),
+            "geo_country": self._stats.get("geo_country"),
+            "geo_code": self._stats.get("geo_code"),
+            "geo_latitude": self._stats.get("geo_latitude"),
+            "geo_longitude": self._stats.get("geo_longitude"),
+            "geo_continent": self._stats.get("geo_continent"),
+            "geo_postal_code": self._stats.get("geo_postal_code"),
+            "geo_timezone": self._stats.get("geo_timezone"),
+
+            # --- LAN vs WAN ---
+            "lan_plays": self._stats.get("lan_plays", 0),
+            "wan_plays": self._stats.get("wan_plays", 0),
+        }
+
+    async def async_update(self):
+        """
+        If the coordinator data changes, re-fetch this user's stats
+        from history_coordinator.data["user_stats"] if needed.
+        """
+        all_stats = self.coordinator.data.get("user_stats", {})
+        self._stats = all_stats.get(self._username, {})
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """
+    This is called when the user changes options in the UI.
+    If stats are disabled, remove existing stats sensors/device.
+    Then reload the config entry so the updated sensor count or stats toggle
+    can be applied to the sensor platform.
+    """
+    enable_stats = entry.options.get(CONF_ENABLE_STATISTICS, False)
+    ent_reg = er.async_get(hass)
+    dev_reg = dr.async_get(hass)
+
+    # If user turned stats off, remove all stats sensors & device
+    if not enable_stats:
+        for entity_entry in list(ent_reg.entities.values()):
+            if (
+                entity_entry.config_entry_id == entry.entry_id
+                and "_stats_" in (entity_entry.unique_id or "")
+            ):
+                ent_reg.async_remove(entity_entry.entity_id)
+
+        # remove the stats device
+        for device_entry in list(dev_reg.devices.values()):
+            if (
+                entry.entry_id in device_entry.config_entries
+                and any(
+                    iden[0] == DOMAIN and iden[1] == f"{entry.entry_id}_statistics_device"
+                    for iden in device_entry.identifiers
+                )
+            ):
+                dev_reg.async_remove_device(device_entry.id)
+
+    # Reload the config entry so the changes take effect
+    await hass.config_entries.async_reload(entry.entry_id)
