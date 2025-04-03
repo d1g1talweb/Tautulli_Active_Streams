@@ -4,10 +4,8 @@ import asyncio
 
 _LOGGER = logging.getLogger(__name__)
 
-
 class TautulliAPI:
     """Handles communication with the Tautulli API."""
-
     def __init__(self, url, api_key, session, verify_ssl=True, timeout=10):
         """
         Initialize the API client.
@@ -74,13 +72,13 @@ class TautulliAPI:
                             _LOGGER.warning("Invalid JSON from Tautulli: %s", json_err)
                             return {}
                     else:
-                        _LOGGER.debug("Non-200 status from Tautulli GET: %s", response.status)
+                        _LOGGER.warning("Non-200 status from Tautulli GET: %s", response.status)
                         return {}
         except asyncio.TimeoutError:
-            _LOGGER.debug("Tautulli API request to %s timed out after %s seconds.", url, self._timeout)
+            _LOGGER.warning("Tautulli API request to %s timed out after %s seconds.", url, self._timeout)
             return {}
         except Exception as err:
-            _LOGGER.debug("Exception calling Tautulli %s: %s", cmd, err)
+            _LOGGER.error("Exception calling Tautulli %s: %s", cmd, err)
             return {}
 
     async def get_activity(self):
@@ -107,16 +105,26 @@ class TautulliAPI:
             "diagnostics": diagnostics,
         }
 
+    async def get_server_info(self):
+        """
+        Validate connection to Tautulli by calling get_server_info.
+        Returns the whole response by default.
+        """
+        resp = await self._call_tautulli("get_server_info", method="GET")
+        if resp.get("response", {}).get("result") == "success":
+            return resp
+        return {}
+
+
     async def get_history(self, **params):
         """
-        Retrieve watch history data from Tautulli.
+        Retrieve history data from Tautulli.
         """
         resp = await self._call_tautulli("get_history", params=params, method="GET")
         if not resp:
             return {}
         return resp.get("response", {}).get("data", {})
-        
-        
+
     async def get_geoip_lookup(self, ip_address: str) -> dict:
         """
         Retrieve geolocation data from Tautulli for the given IP address.
@@ -135,8 +143,7 @@ class TautulliAPI:
             return response_data.get("data", {})
         else:
             return {}
-
-
+        
     async def terminate_session(self, session_id, message=""):
         """Kill a Tautulli session by session_id."""
         params = {"session_id": session_id, "message": message}
