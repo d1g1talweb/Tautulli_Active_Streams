@@ -11,6 +11,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.const import CONF_URL, CONF_API_KEY, CONF_VERIFY_SSL
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util.dt import now as ha_now
 
 from .api import TautulliAPI
 from .services import async_setup_kill_stream_services  # kill-stream services
@@ -26,6 +27,7 @@ from .const import (
     CONF_NUM_SENSORS,
     CONF_STATISTICS_INTERVAL,
     CONF_STATISTICS_DAYS,
+    CONF_STATS_MONTH_TO_DATE,
     CONF_ENABLE_IP_GEOLOCATION, 
     LOGGER as _LOGGER,
 )
@@ -70,13 +72,6 @@ class TautulliSessionsCoordinator(DataUpdateCoordinator):
 
         # For controlling how many session sensors we want
         self.sensor_count = config_entry.options.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
-
-        # Store the old stats days so we can detect day-range changes later
-        self.old_stats_days = config_entry.options.get(CONF_STATISTICS_DAYS, DEFAULT_STATISTICS_DAYS)
-
-        # Also store old stats toggle
-        self.old_stats_toggle = config_entry.options.get(CONF_ENABLE_STATISTICS, False)
-        
         
     async def _async_update_data(self):
         """Fetch from Tautulli get_activity, track paused durations, etc."""
@@ -177,13 +172,30 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
         self.api = api
         self._geo_cache = geo_cache
 
+        # store the old stats days so we can detect day-range changes later
+        self.old_stats_days = config_entry.options.get(CONF_STATISTICS_DAYS, DEFAULT_STATISTICS_DAYS)
+
+        # store old stats toggle
+        self.old_stats_toggle = config_entry.options.get(CONF_ENABLE_STATISTICS, False)
         
+        # store Month to date toggle
+        self.old_mtd = config_entry.options.get(CONF_STATS_MONTH_TO_DATE, False)
+
     async def _async_update_data(self):
-        """If stats are on, fetch watch history and parse user_stats."""
+        """If stats are on, fetch watch history based on either day-range or month-to-date."""
         data = {}
+
+        # Check if user enabled statistics
         if self.config_entry.options.get(CONF_ENABLE_STATISTICS, False):
-            days = self.config_entry.options.get(CONF_STATISTICS_DAYS, DEFAULT_STATISTICS_DAYS)
-            after_date = datetime.now() - timedelta(days=days)
+            use_mtd = self.config_entry.options.get("stats_month_to_date", False)
+            if use_mtd:
+                # Start from 1st of month in local HA timezone
+                after_date = ha_now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+            else:
+                # Default to X days ago in local HA timezone
+                after_date = ha_now() - timedelta(days=self.config_entry.options.get(CONF_STATISTICS_DAYS, DEFAULT_STATISTICS_DAYS))
+
             after_str = after_date.strftime("%Y-%m-%d")
 
             try:
@@ -203,14 +215,12 @@ class TautulliHistoryCoordinator(DataUpdateCoordinator):
             data["history"] = {}
             data["user_stats"] = {}
 
-        # If IP geolocation is on, geolocate each user's last IP
-        # AND create device_tracker entries for each record
+        # If IP geolocation is on => geolocate user IPs
         if self.config_entry.options.get(CONF_ENABLE_IP_GEOLOCATION, False):
-            # Grab the raw record list
             records = data["history"].get("data", []) if data["history"] else []
             await self._do_user_ip_geolocation(data["user_stats"], records)
-        return data
 
+        return data
 
     def _parse_user_history(self, hist_resp):
         """Parse watch history and accumulate user stats for each user."""
@@ -651,6 +661,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # If stats are on, do an immediate refresh for watch history
     if entry.options.get(CONF_ENABLE_STATISTICS, False):
+        # 4) Remove user sensors for all users (Wipe them all)
+        await async_remove_all_user_stats_sensors(hass, entry)  # <-- FIXED
         await history_coordinator.async_request_refresh()
 
     # 4) Store everything in hass.data
@@ -680,8 +692,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as exc:
         _LOGGER.error("Exception during kill stream service registration: %s", exc, exc_info=True)
 
-    # Store old stats toggle in the sessions_coordinator
-    sessions_coordinator.old_stats_toggle = entry.options.get(CONF_ENABLE_STATISTICS, False)
+    # Store old stats toggle
+    history_coordinator.old_stats_toggle = entry.options.get(CONF_ENABLE_STATISTICS, False)
 
     # 8) Listen for options changes
     entry.async_on_unload(entry.add_update_listener(async_update_options))
@@ -723,28 +735,102 @@ async def async_remove_extra_session_sensors(hass: HomeAssistant, entry: ConfigE
                 registry.async_remove(ent.entity_id)
 
 
-async def async_remove_statistics_sensors(hass: HomeAssistant, entry: ConfigEntry):
-    """Remove all user-stats sensors (those with '_stats_') plus the device."""
-    from homeassistant.helpers import entity_registry as er
-    registry = er.async_get(hass)
+# ---------------------------
+#  Update Options
+# ---------------------------
+async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):
+    """
+    Triggered when user changes any integration option (like sensor count, stats toggle, or stats days).
+    We'll remove or reload as needed to reflect changes.
+    """
+    data = hass.data[DOMAIN].get(entry.entry_id)
+    if not data:
+        return
 
-    entries = er.async_entries_for_config_entry(registry, entry.entry_id)
-    for ent in entries:
-        if "_stats_" in ent.unique_id:
-            _LOGGER.debug(
-                "Removing user-stats sensor entity: %s (unique_id: %s)",
-                ent.entity_id,
-                ent.unique_id,
-            )
-            registry.async_remove(ent.entity_id)
+    sessions_coordinator = data["sessions_coordinator"]
+    history_coordinator = data["history_coordinator"]
 
-    # Also remove the stats device
-    device_reg = dr.async_get(hass)
-    device = device_reg.async_get_device(identifiers={(DOMAIN, f"{entry.entry_id}_statistics_device")})
-    if device:
-        _LOGGER.debug("Removing user-stats device: %s (%s)", device.name, device.id)
-        device_reg.async_remove_device(device.id)
+    # Stats toggle
+    old_stats = history_coordinator.old_stats_toggle
+    new_stats = entry.options.get(CONF_ENABLE_STATISTICS, False)
+    history_coordinator.old_stats_toggle = new_stats
 
+    # Day range
+    old_days = history_coordinator.old_stats_days
+    new_days = entry.options.get(CONF_STATISTICS_DAYS, DEFAULT_STATISTICS_DAYS)
+    history_coordinator.old_stats_days = new_days
+
+    # Month-to-date
+    old_mtd = getattr(history_coordinator, "old_mtd", False)
+    new_mtd = entry.options.get(CONF_STATS_MONTH_TO_DATE, False)
+    history_coordinator.old_mtd = new_mtd
+
+    # Sensor counts
+    old_sensors = sessions_coordinator.sensor_count
+    new_sensors = entry.options.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
+
+    reload_needed = False
+
+    if old_stats != new_stats:
+        _LOGGER.debug("Stats toggled from %s to %s; reload needed", old_stats, new_stats)
+        reload_needed = True
+
+    if old_days != new_days:
+        _LOGGER.debug("Day range changed from %s to %s; reload needed", old_days, new_days)
+        reload_needed = True
+
+    if old_mtd != new_mtd:
+        _LOGGER.debug("Month-to-date toggled from %s to %s; reload needed", old_mtd, new_mtd)
+        reload_needed = True
+
+    if old_sensors != new_sensors:
+        _LOGGER.debug("Sensor count changed from %s to %s; reload needed", old_sensors, new_sensors)
+        reload_needed = True
+        
+    # If major changes, do a reload. But first, do partial refresh + remove.
+    if reload_needed:
+        # 1) If they lowered sensors, remove extras first
+        if new_sensors < old_sensors:
+            await async_remove_extra_session_sensors(hass, entry)
+
+        # 2) If they turned stats off, remove stats sensors & device and the watch-history button
+        if old_stats and not new_stats:
+            await async_remove_statistics_sensors(hass, entry)
+            await async_remove_history_button(hass, entry)
+
+        # 4) Remove user sensors for all users (Wipe them all)
+        await async_remove_all_user_stats_sensors(hass, entry)  # <-- FIXED
+        
+        # 3) PARTIAL REFRESH to get the new data (especially if days changed),
+        #    so we know which user-stats are still valid.
+        await sessions_coordinator.async_request_refresh()
+        await history_coordinator.async_request_refresh()
+
+
+
+        current_stats = history_coordinator.data.get("user_stats", {})
+
+        # 5) Reload so sensor/button code picks up changes or re-adds user sensors
+        await hass.config_entries.async_reload(entry.entry_id)
+
+
+    else:
+        # No major changes => do partial refresh only
+        new_session_int = entry.options.get(CONF_SESSION_INTERVAL, DEFAULT_SESSION_INTERVAL)
+        new_stats_int = entry.options.get(CONF_STATISTICS_INTERVAL, DEFAULT_STATISTICS_INTERVAL)
+        sessions_coordinator.update_interval = timedelta(seconds=new_session_int)
+        history_coordinator.update_interval = timedelta(seconds=new_stats_int)
+
+        sessions_coordinator.sensor_count = new_sensors
+        
+        # Remove any user sensors for users who might have disappeared
+        await async_remove_all_user_stats_sensors(hass, entry)
+        
+        await sessions_coordinator.async_request_refresh()
+        await history_coordinator.async_request_refresh()
+
+
+        current_stats = history_coordinator.data.get("user_stats", {})
 
 # ---------------------------
 #  Unload
@@ -766,96 +852,27 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     return unload_ok
 
-# ---------------------------
-#  Update Options
-# ---------------------------
-async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):
-    """
-    Triggered when user changes any integration option (like sensor count, stats toggle, or stats days).
-    We'll remove or reload as needed to reflect changes.
-    """
-    data = hass.data[DOMAIN].get(entry.entry_id)
-    if not data:
-        return
+async def async_remove_statistics_sensors(hass: HomeAssistant, entry: ConfigEntry):
+    """Remove all user-stats sensors (those with '_stats_') plus the device."""
+    from homeassistant.helpers import entity_registry as er
+    registry = er.async_get(hass)
 
-    sessions_coordinator = data["sessions_coordinator"]
-    history_coordinator = data["history_coordinator"]
+    entries = er.async_entries_for_config_entry(registry, entry.entry_id)
+    for ent in entries:
+        if "_stats_" in ent.unique_id:
+            _LOGGER.debug(
+                "Removing user-stats sensor entity: %s (unique_id: %s)",
+                ent.entity_id,
+                ent.unique_id,
+            )
+            registry.async_remove(ent.entity_id)
 
-    # Gather old/new stats toggle
-    old_stats = sessions_coordinator.old_stats_toggle
-    new_stats = entry.options.get(CONF_ENABLE_STATISTICS, False)
-    sessions_coordinator.old_stats_toggle = new_stats
-
-    # Gather old/new sensor counts
-    old_sensors = sessions_coordinator.sensor_count
-    new_sensors = entry.options.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
-
-    # Gather old/new stats day range
-    old_days = sessions_coordinator.old_stats_days
-    new_days = entry.options.get(CONF_STATISTICS_DAYS, 30)
-    # Store the new value for next time
-    sessions_coordinator.old_stats_days = new_days
-
-    # Decide if we need a reload
-    reload_needed = False
-
-    # Did stats toggle change?
-    if old_stats != new_stats:
-        _LOGGER.debug("Stats toggled from %s to %s; reload needed", old_stats, new_stats)
-        reload_needed = True
-
-    # Did sensor count change?
-    if old_sensors != new_sensors:
-        _LOGGER.debug("Sensor count changed from %s to %s; reload needed", old_sensors, new_sensors)
-        reload_needed = True
-
-    # Did stats days range change?
-    if old_days != new_days:
-        _LOGGER.debug("Stats day range changed from %s to %s; reload needed", old_days, new_days)
-        reload_needed = True
-
-    # If major changes, do a reload. But first, do partial refresh + remove.
-    if reload_needed:
-        # 1) If they lowered sensors, remove extras first
-        if new_sensors < old_sensors:
-            await async_remove_extra_session_sensors(hass, entry)
-
-        # 2) If they turned stats off, remove stats sensors & device and the watch-history button
-        if old_stats and not new_stats:
-            await async_remove_statistics_sensors(hass, entry)
-            await async_remove_history_button(hass, entry)
-
-        # 3) PARTIAL REFRESH to get the new data (especially if days changed),
-        #    so we know which user-stats are still valid.
-        await sessions_coordinator.async_request_refresh()
-        await history_coordinator.async_request_refresh()
-
-        # 4) Remove user sensors for all users (Wipe them all)
-        await async_remove_all_user_stats_sensors(hass, entry)  # <-- FIXED
-
-        current_stats = history_coordinator.data.get("user_stats", {})
-
-        # 5) Reload so sensor/button code picks up changes or re-adds user sensors
-        await hass.config_entries.async_reload(entry.entry_id)
-
-
-    else:
-        # No major changes => do partial refresh only
-        new_session_int = entry.options.get(CONF_SESSION_INTERVAL, DEFAULT_SESSION_INTERVAL)
-        new_stats_int = entry.options.get(CONF_STATISTICS_INTERVAL, DEFAULT_STATISTICS_INTERVAL)
-        sessions_coordinator.update_interval = timedelta(seconds=new_session_int)
-        history_coordinator.update_interval = timedelta(seconds=new_stats_int)
-
-        sessions_coordinator.sensor_count = new_sensors
-
-        await sessions_coordinator.async_request_refresh()
-        await history_coordinator.async_request_refresh()
-
-        # Remove any user sensors for users who might have disappeared
-        await async_remove_all_user_stats_sensors(hass, entry)
-        current_stats = history_coordinator.data.get("user_stats", {})
-
-
+    # Also remove the stats device
+    device_reg = dr.async_get(hass)
+    device = device_reg.async_get_device(identifiers={(DOMAIN, f"{entry.entry_id}_statistics_device")})
+    if device:
+        _LOGGER.debug("Removing user-stats device: %s (%s)", device.name, device.id)
+        device_reg.async_remove_device(device.id)
 
 async def async_remove_history_button(hass: HomeAssistant, entry: ConfigEntry):
     """
