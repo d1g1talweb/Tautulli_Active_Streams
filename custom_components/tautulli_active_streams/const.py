@@ -16,6 +16,7 @@ DEFAULT_STATISTICS_DAYS = 30
 CONF_SESSION_INTERVAL = "session_interval"
 CONF_NUM_SENSORS = "num_sensors"
 CONF_ENABLE_STATISTICS = "enable_statistics"
+CONF_STATS_MONTH_TO_DATE = "stats_month_to_date"
 CONF_STATISTICS_INTERVAL = "statistics_interval"
 CONF_STATISTICS_DAYS = "statistics_days"
 CONF_ADVANCED_ATTRIBUTES = "advanced_attributes"
