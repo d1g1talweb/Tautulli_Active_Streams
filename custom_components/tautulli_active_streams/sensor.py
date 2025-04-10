@@ -11,6 +11,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_track_time_interval
+import aiohttp
+import xml.etree.ElementTree as ET
 
 from .const import (
     DOMAIN,
@@ -18,10 +20,11 @@ from .const import (
     CONF_NUM_SENSORS,
     CONF_ENABLE_STATISTICS,
     CONF_IMAGE_PROXY,
-    CONF_ADVANCED_ATTRIBUTES,  # <-- Make sure these are imported
+    CONF_ADVANCED_ATTRIBUTES,  # make sure these are imported
 )
 
 _LOGGER = logging.getLogger(__name__)
+
 
 def format_seconds_to_min_sec(total_seconds: float) -> str:
     """Convert seconds into 'Mm Ss' format."""
@@ -29,7 +32,65 @@ def format_seconds_to_min_sec(total_seconds: float) -> str:
     minutes = total_seconds // 60
     secs = total_seconds % 60
     return f"{minutes}m {secs}s"
-    
+
+
+async def _fetch_plex_credits(plex_base_url, plex_token, rating_key):
+    """
+    Query Plex for chapters & markers by hitting:
+      {plex_base_url}/library/metadata/{rating_key}?includeChapters=1&includeMarkers=1&X-Plex-Token={plex_token}
+
+    We parse the returned XML for either:
+      <Marker type="credits" startTimeOffset="..." />
+    or
+      <Chapter tag="...Credits..." startTimeOffset="..." />
+    If found, we return the startTimeOffset (ms). Otherwise None.
+    """
+    url = (
+        f"{plex_base_url}/library/metadata/{rating_key}"
+        f"?includeChapters=1&includeMarkers=1"
+        f"&X-Plex-Token={plex_token}"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=10) as resp:
+                if resp.status != 200:
+                    _LOGGER.warning(
+                        "Failed to fetch XML for rating_key=%s: status=%s, reason=%s",
+                        rating_key, resp.status, resp.reason
+                    )
+                    return None
+
+                # Retrieve the full XML text
+                xml_body = await resp.text()
+
+                # Parse XML with ElementTree
+                root = ET.fromstring(xml_body)  # <MediaContainer ...>
+
+                # Usually <Video> is the first child
+                video_el = root.find("Video")
+                if video_el is None:
+                    return None
+
+                # 1) Check <Marker type="credits">
+                markers = video_el.findall("Marker")
+                for marker in markers:
+                    mtype = marker.attrib.get("type", "")
+                    if mtype == "credits":
+                        return int(marker.attrib.get("startTimeOffset", 0))
+
+                # 2) Otherwise check <Chapter> with "credit" in the 'tag'
+                chapters = video_el.findall("Chapter")
+                for ch in chapters:
+                    ch_tag = ch.attrib.get("tag", "").lower()
+                    if "credit" in ch_tag:
+                        return int(ch.attrib.get("startTimeOffset", 0))
+
+    except Exception as err:
+        _LOGGER.warning("Error fetching Plex credits for rating_key=%s: %s", rating_key, err)
+
+    return None
+
+
 async def async_setup_entry(hass, entry, async_add_entities):
     """
     Set up the Tautulli stream sensors, diagnostic sensors, and user stats sensors
@@ -46,18 +107,14 @@ async def async_setup_entry(hass, entry, async_add_entities):
     # Number of active stream sensors to create
     num_sensors = entry.options.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
 
-    #
     # 1) Create a sensor for each "active stream" slot
-    #
     session_sensors = []
     for i in range(num_sensors):
         session_sensors.append(
             TautulliStreamSensor(sessions_coordinator, entry, i)
         )
 
-    #
-    # 2) Create diagnostic sensors (read from sessions_coordinator)
-    #
+    # 2) Create diagnostic sensors
     diagnostic_sensors = [
         TautulliDiagnosticSensor(sessions_coordinator, entry, "stream_count"),
         TautulliDiagnosticSensor(sessions_coordinator, entry, "stream_count_direct_play"),
@@ -68,9 +125,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         TautulliDiagnosticSensor(sessions_coordinator, entry, "wan_bandwidth"),
     ]
 
-    #
     # 3) (Optional) Create user stats sensors if "enable_statistics" is on
-    #
     stats_sensors = []
     if entry.options.get(CONF_ENABLE_STATISTICS, False):
         user_stats = history_coordinator.data.get("user_stats", {})
@@ -97,9 +152,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(diagnostic_sensors, True)
     async_add_entities(stats_sensors, True)
 
-    # Listen for changes to options so we can remove or reload sensors if needed
-#    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
-
 
 class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
     """
@@ -116,13 +168,17 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"plex_session_{index + 1}_{entry.entry_id}_tautulli"
         self._attr_name = f"Plex Session {index + 1} (Tautulli)"
         self._attr_icon = "mdi:plex"
-        
+
         # local paused duration tracking
         self._paused_start = None
         self._paused_duration_sec = 0
         self._paused_duration_str = "0m 0s"
         self._unsub_timer = None
-        
+
+        # new: track credits
+        self._credits_start_time = None  # e.g. "1m 23s"
+        self._in_credits = False
+
     @property
     def device_info(self):
         return {
@@ -136,12 +192,11 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
     async def async_added_to_hass(self):
         """
         Called when this sensor is added to HA.
-        We set up a per-second timer to update the paused duration.
+        We set up a per-second timer to update pause durations and credits.
         """
         await super().async_added_to_hass()
-        # NEW: set up a 1s interval callback
         self._unsub_timer = async_track_time_interval(
-            self.hass, self._update_pause_duration, timedelta(seconds=1)
+            self.hass, self._update_every_second, timedelta(seconds=1)
         )
 
     async def async_will_remove_from_hass(self):
@@ -153,13 +208,26 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             self._unsub_timer = None
         await super().async_will_remove_from_hass()
 
-    async def _update_pause_duration(self, now):
+    async def _update_every_second(self, now):
         """
-        The callback that runs every second.
-        If the stream is paused, we increment our local paused counter.
+        Called every second. Update paused duration and
+        check for credits if Plex is enabled.
+        """
+        # 1) Update local paused-time tracking
+        self._update_pause_duration()
+
+        # 2) Update Plex credits logic
+        await self._update_plex_credits()
+
+        # Finally, write new state attributes
+        self.async_write_ha_state()
+
+    def _update_pause_duration(self):
+        """
+        Increments local pause counter if the state is 'paused'.
+        Resets if it's not paused.
         """
         current_state = self.state.lower()
-
         if current_state == "paused":
             if self._paused_start is None:
                 self._paused_start = time.time()
@@ -167,17 +235,69 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             self._paused_duration_sec = int(elapsed)
             self._paused_duration_str = format_seconds_to_min_sec(self._paused_duration_sec)
         else:
-            # reset if not paused
             self._paused_start = None
             self._paused_duration_sec = 0
             self._paused_duration_str = "0m 0s"
 
-        # Let HA know we have new attribute values
-        self.async_write_ha_state()
-        
+    ### NOTE: THIS METHOD IS NOW INDENTED INSIDE THE CLASS
+    async def _update_plex_credits(self):
+        """
+        Check if user enabled Plex integration, fetch chapters, determine if credits are active.
+        """
+        plex_enabled = self._entry.data.get("plex_enabled")
+        plex_token = self._entry.data.get("plex_token")
+        plex_base_url = self._entry.data.get("plex_base_url")
+
+        if not plex_enabled or not plex_token or not plex_base_url:
+            # if user didn't enable or token is missing, skip
+            self._credits_start_time = None
+            self._in_credits = False
+            return
+
+        sessions = self.coordinator.data.get("sessions", [])
+        if len(sessions) <= self._index:
+            self._credits_start_time = None
+            self._in_credits = False
+            return
+
+        session = sessions[self._index]
+        rating_key = session.get("rating_key")
+
+        # view_offset is a string from Tautulli, parse it as int
+        view_offset_str = session.get("view_offset")
+        if not rating_key or not view_offset_str:
+            # skip if no rating_key or no offset
+            self._credits_start_time = None
+            self._in_credits = False
+            return
+
+        try:
+            view_offset = int(view_offset_str)
+        except ValueError:
+            _LOGGER.warning("Could not parse view_offset=%s for rating_key=%s", view_offset_str, rating_key)
+            self._credits_start_time = None
+            self._in_credits = False
+            return
+
+        # fetch chapter data
+        start_ms = await _fetch_plex_credits(plex_base_url, plex_token, rating_key)
+        if start_ms:
+            # are we >= credit start?
+            self._in_credits = (view_offset >= start_ms)
+
+            # store a user-readable time
+            minutes = start_ms // 60000
+            seconds = (start_ms % 60000) // 1000
+            self._credits_start_time = f"{minutes}m {seconds}s"
+        else:
+            # no credits info found
+            self._credits_start_time = None
+            self._in_credits = False
+    ### END OF THE METHOD
+
     @property
     def state(self):
-        """Return the session's state (e.g., 'playing', 'paused', or STATE_OFF)."""
+        """Return the current Tautulli session state (playing, paused, etc.)"""
         sessions = self.coordinator.data.get("sessions", [])
         if len(sessions) > self._index:
             return sessions[self._index].get("state", STATE_OFF)
@@ -187,7 +307,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
     def extra_state_attributes(self):
         """
         Return extra attributes for the sensor (basic or advanced),
-        including an image_url if we have a valid base_url & api_key.
+        plus new 'in_credits' info if Plex integration is enabled.
         """
         sessions = self.coordinator.data.get("sessions", [])
         if len(sessions) <= self._index:
@@ -197,7 +317,6 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
 
         base_url = self._entry.data.get(CONF_URL)
         api_key = self._entry.data.get(CONF_API_KEY)
-        # Retrieve from options using our constants:
         image_proxy = self._entry.options.get(CONF_IMAGE_PROXY, False)
         advanced = self._entry.options.get(CONF_ADVANCED_ATTRIBUTES, False)
 
@@ -205,19 +324,16 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
 
         # Build an image URL if base_url & api_key
         thumb_url = session.get("grandparent_thumb") or session.get("thumb")
-        image_url = None
-        if base_url and api_key and thumb_url:
+        if thumb_url and base_url and api_key:
             if image_proxy:
-                # Local proxy
-                image_url = (
+                attributes["image_url"] = (
                     f"/api/tautulli/image"
                     f"?entry_id={self._entry.entry_id}"
                     f"&img={thumb_url}"
                     "&width=300&height=450&fallback=poster&refresh=true"
                 )
             else:
-                # Direct Tautulli URL
-                image_url = (
+                attributes["image_url"] = (
                     f"{base_url}/api/v2"
                     f"?apikey={api_key}"
                     f"&cmd=pms_image_proxy"
@@ -225,65 +341,63 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                     "&width=300&height=450&fallback=poster&refresh=true"
                 )
 
-        art_path = session.get("art")  # e.g. "/library/metadata/38861/art/1741659890"
-        art_url = None
-        if base_url and api_key and art_path:
+        # Build an art URL if base_url & api_key
+        art_path = session.get("art")
+        if art_path and base_url and api_key:
             if image_proxy:
-                # Local proxy for art (fanart background)
-                art_url = (
+                attributes["art_url"] = (
                     f"/api/tautulli/image"
                     f"?entry_id={self._entry.entry_id}"
                     f"&img={art_path}"
                     "&width=1920&height=1080&fallback=art&refresh=true"
                 )
             else:
-                # Direct Tautulli URL for art
-                art_url = (
+                attributes["art_url"] = (
                     f"{base_url}/api/v2"
                     f"?apikey={api_key}"
                     f"&cmd=pms_image_proxy"
                     f"&img={art_path}"
                     "&width=1920&height=1080&fallback=art&refresh=true"
                 )
-        
-        # Basic attributes
-        attributes.update({
-            "user": session.get("user"),
-            "progress_percent": session.get("progress_percent"),
-            "media_type": session.get("media_type"),
-            "full_title": session.get("full_title"),
-            "grandparent_thumb": session.get("grandparent_thumb"),
-            "thumb": session.get("thumb"),
-            "image_url": image_url,
-            "art_url": art_url,
-            "parent_media_index": session.get("parent_media_index"),
-            "media_index": session.get("media_index"),
-            "year": session.get("year"),
-            "product": session.get("product"),
-            "player": session.get("player"),
-            "device": session.get("device"),
-            "platform": session.get("platform"),
-            "location": session.get("location"),
-            "ip_address": session.get("ip_address"),
-            "ip_address_public": session.get("ip_address_public"),
-            "geo_city": session.get("geo_city"),
-            "geo_region": session.get("geo_region"),
-            "geo_country": session.get("geo_country"),
-            "geo_code": session.get("geo_code"),
-            "local": session.get("local"),
-            "relayed": session.get("relayed"),
-            "bandwidth": session.get("bandwidth"),
-            "video_resolution": session.get("video_resolution"),
-            "stream_video_resolution": session.get("stream_video_resolution"),
-            "transcode_decision": session.get("transcode_decision"),
-        })
 
-        # If advanced attributes are off, return now
+        # Basic
+        attributes["user"] = session.get("user")
+        attributes["progress_percent"] = session.get("progress_percent")
+        attributes["media_type"] = session.get("media_type")
+        attributes["full_title"] = session.get("full_title")
+        attributes["parent_media_index"] = session.get("parent_media_index")
+        attributes["media_index"] = session.get("media_index")
+        attributes["year"] = session.get("year")
+        attributes["product"] = session.get("product")
+        attributes["player"] = session.get("player")
+        attributes["device"] = session.get("device")
+        attributes["platform"] = session.get("platform")
+        attributes["location"] = session.get("location")
+        attributes["ip_address"] = session.get("ip_address")
+        attributes["ip_address_public"] = session.get("ip_address_public")
+        attributes["geo_city"] = session.get("geo_city")
+        attributes["geo_region"] = session.get("geo_region")
+        attributes["geo_country"] = session.get("geo_country")
+        attributes["geo_code"] = session.get("geo_code")
+        attributes["local"] = session.get("local")
+        attributes["relayed"] = session.get("relayed")
+        attributes["bandwidth"] = session.get("bandwidth")
+        attributes["video_resolution"] = session.get("video_resolution")
+        attributes["stream_video_resolution"] = session.get("stream_video_resolution")
+        attributes["transcode_decision"] = session.get("transcode_decision")
+
+        # Always include paused duration
+        attributes["stream_paused_duration"] = self._paused_duration_str
+
+        # If advanced is off, return now
         if not advanced:
+            # still add 'in_credits' below, even if advanced is off
+            attributes["in_credits"] = self._in_credits
+            if self._credits_start_time:
+                attributes["credits_start_time"] = self._credits_start_time
             return attributes
 
-        # Advanced is on:
-        # Convert stream_duration from ms -> H:MM:SS
+        # Advanced is ON, so add more
         if session.get("stream_duration"):
             total_ms = float(session["stream_duration"])
             hours = int(total_ms // 3600000)
@@ -293,7 +407,6 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
         else:
             formatted_duration = None
 
-        # Calculate remaining time
         if session.get("view_offset") and session.get("stream_duration"):
             remain_ms = float(session["stream_duration"]) - float(session["view_offset"])
             remain_seconds = remain_ms / 1000
@@ -302,21 +415,15 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             remain_secs = int(remain_seconds % 60)
             formatted_remaining = f"{remain_hours}:{remain_minutes:02d}:{remain_secs:02d}"
 
-            # ETA
-            # Calculate ETA
             eta = datetime.now() + timedelta(seconds=remain_seconds)
-            
-            # Get hour without leading zero, but still handle "12" correctly
             hour_12 = eta.strftime("%I").lstrip("0") or "12"
             minute = eta.strftime("%M")
             ampm = eta.strftime("%p").lower()
-            
             formatted_eta = f"{hour_12}:{minute} {ampm}"
         else:
             formatted_remaining = None
             formatted_eta = None
 
-        # Additional advanced keys
         attributes.update({
             "user_friendly_name": session.get("friendly_name"),
             "username": session.get("username"),
@@ -355,7 +462,6 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             "stream_duration": formatted_duration,
             "stream_remaining": formatted_remaining,
             "stream_eta": formatted_eta,
-            "Stream_paused_duration": self._paused_duration_str,
             "stream_video_resolution": session.get("stream_video_resolution"),
             "stream_container": session.get("stream_container"),
             "stream_bitrate": session.get("stream_bitrate"),
@@ -372,6 +478,11 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             "stream_audio_language": session.get("stream_audio_language"),
             "stream_audio_language_code": session.get("stream_audio_language_code"),
         })
+
+        # Always add credits info
+        attributes["in_credits"] = self._in_credits
+        if self._credits_start_time:
+            attributes["credits_start_time"] = self._credits_start_time
 
         return attributes
 
@@ -394,6 +505,7 @@ class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
         self._attr_device_info = self.device_info
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_device_class = SensorDeviceClass.DATA_SIZE
+
         if metric in ["total_bandwidth", "lan_bandwidth", "wan_bandwidth"]:
             self._attr_native_unit_of_measurement = "Mbps"
         else:

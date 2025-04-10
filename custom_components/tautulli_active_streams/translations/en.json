@@ -3,12 +3,21 @@
     "step": {
       "user": {
         "title": "Tautulli Active Streams",
-        "description": "To find your API key, open the Tautulli webpage and navigate to **Settings** → **Web Interface**. The API key is at the bottom of that page.\n\n**Examples of URL formats:**\n- **Local (HTTP)**: `http://192.168.0.10:8181`\n- **Remote / Reverse Proxy (HTTPS)**: `https://tautulli.example.com`\n",
+        "description": "To find your API key, open the Tautulli webpage and navigate to **Settings** → **Web Interface**. The API key is at the bottom of that page.\n\n**Examples of URL formats:**\n- **Local (HTTP)**: `http://192.168.0.10:8181`\n- **Remote / Reverse Proxy (HTTPS)**: `https://tautulli.example.com`",
         "data": {
           "server_name": "Enter a friendly name for your Tautulli server (optional).",
           "url": "Enter the full URL of your Tautulli server (including port if necessary).",
           "api_key": "API key (found in Tautulli settings).",
-          "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate."
+          "verify_ssl": "Enable SSL verification? Disable if using a self-signed certificate.",
+          "enable_plex_integration": "Enable Plex integration for credit detection?"
+        }
+      },
+      "plex": {
+        "title": "Plex Integration Setup",
+        "description": "Enter your Plex information for advanced features. (You can find your Plex token by checking your Plex server logs or browser network requests.)",
+        "data": {
+          "plex_token": "Plex Token",
+          "plex_base_url": "Override Plex base URL (optional)."
         }
       },
       "options": {
@@ -28,7 +37,6 @@
       }
     }
   },
-
   "options": {
     "step": {
       "init": {

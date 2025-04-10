@@ -4,6 +4,7 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_API_KEY, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import selector
 
 from .const import (
     DOMAIN,
@@ -40,6 +41,8 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_URL, default=user_input.get(CONF_URL, "")): str,
             vol.Required(CONF_API_KEY, default=user_input.get(CONF_API_KEY, "")): str,
             vol.Optional(CONF_VERIFY_SSL, default=user_input.get(CONF_VERIFY_SSL, True)): bool,
+            # New: Add a checkbox to enable Plex Integration
+            vol.Optional("enable_plex_integration", default=user_input.get("enable_plex_integration", False)): bool,
         })
         return self.async_show_form(
             step_id="user",
@@ -57,6 +60,7 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             verify_ssl = user_input.get(CONF_VERIFY_SSL, True)
             server_name = user_input.get("server_name", "").strip()
+            enable_plex_integration = user_input.get("enable_plex_integration", False)
 
             session = async_get_clientsession(self.hass, verify_ssl)
             api = TautulliAPI(url, user_input[CONF_API_KEY], session, verify_ssl)
@@ -70,6 +74,18 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 else:
                     if not server_name:
                         server_name = resp["response"].get("data", {}).get("pms_name", "")
+
+                    # Store Tautulli data
+                    self._flow_data = {
+                        "server_name": server_name,
+                        "url": url,
+                        "api_key": user_input[CONF_API_KEY],
+                        "verify_ssl": verify_ssl,
+                        "enable_plex_integration": enable_plex_integration,
+                        # We can parse pms_url from Tautulli if needed, or just set empty for now.
+                        "plex_base_url": resp["response"]["data"].get("pms_url", ""),
+                    }
+
             except aiohttp.ClientConnectionError:
                 errors["base"] = "cannot_connect"
             except Exception as e:
@@ -79,15 +95,39 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if errors:
                 return self._show_setup_form(errors, user_input)
 
-            self._flow_data = {
-                "server_name": server_name,
-                "url": url,
-                "api_key": user_input[CONF_API_KEY],
-                "verify_ssl": verify_ssl,
-            }
+            # If user checked the box, move to a plex step
+            if enable_plex_integration:
+                return await self.async_step_plex()
+            # Otherwise go directly to the options step
             return await self.async_step_options()
 
         return self._show_setup_form()
+
+    async def async_step_plex(self, user_input=None):
+        """Step to collect Plex token/base URL if user wants deeper integration."""
+        errors = {}
+        if user_input is not None:
+            # Store the plex data
+            self._flow_data["plex_token"] = user_input.get("plex_token", "")
+            # Allow override of base url if user wants to
+            plex_base_input = user_input.get("plex_base_url", "").strip()
+            if plex_base_input:
+                self._flow_data["plex_base_url"] = plex_base_input
+
+            return await self.async_step_options()
+
+        # Prefill base URL from Tautulli or blank
+        default_base_url = self._flow_data.get("plex_base_url", "")
+
+        plex_schema = vol.Schema({
+            vol.Required("plex_token", default=""): str,
+            vol.Optional("plex_base_url", default=default_base_url): str,
+        })
+        return self.async_show_form(
+            step_id="plex",
+            data_schema=plex_schema,
+            errors=errors
+        )
 
     async def async_step_options(self, user_input=None):
         errors = {}
@@ -108,6 +148,10 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_URL: self._flow_data["url"],
                     CONF_API_KEY: self._flow_data["api_key"],
                     CONF_VERIFY_SSL: self._flow_data["verify_ssl"],
+                    # Save plex toggles
+                    "plex_enabled": self._flow_data.get("enable_plex_integration", False),
+                    "plex_token": self._flow_data.get("plex_token"),
+                    "plex_base_url": self._flow_data.get("plex_base_url"),
                 },
                 options={
                     CONF_SESSION_INTERVAL: session_interval,
