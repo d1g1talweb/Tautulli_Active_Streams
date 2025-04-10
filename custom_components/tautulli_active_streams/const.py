@@ -23,6 +23,14 @@ CONF_ADVANCED_ATTRIBUTES = "advanced_attributes"
 CONF_IMAGE_PROXY = "image_proxy"
 CONF_ENABLE_IP_GEOLOCATION = "enable_ip_geolocation"
 
+# ---------------------------
+# Configuration option keys
+# ---------------------------
+CONF_PLEX_ENABLED = "plex_enabled"
+CONF_PLEX_TOKEN = "plex_token"
+CONF_PLEX_BASEURL = "plex_base_url"
+
+
 DEFAULT_VERIFY_SSL = False
 
 LOGGER = logging.getLogger(__package__)

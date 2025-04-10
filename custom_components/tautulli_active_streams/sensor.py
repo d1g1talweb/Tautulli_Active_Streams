@@ -20,7 +20,7 @@ from .const import (
     CONF_NUM_SENSORS,
     CONF_ENABLE_STATISTICS,
     CONF_IMAGE_PROXY,
-    CONF_ADVANCED_ATTRIBUTES,  # make sure these are imported
+    CONF_ADVANCED_ATTRIBUTES  # make sure these are imported,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -70,6 +70,8 @@ async def _fetch_plex_credits(plex_base_url, plex_token, rating_key):
                 video_el = root.find("Video")
                 if video_el is None:
                     return None
+
+                summary_text = video_el.attrib.get("summary", "")
 
                 # 1) Check <Marker type="credits">
                 markers = video_el.findall("Marker")
@@ -309,6 +311,10 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
         Return extra attributes for the sensor (basic or advanced),
         plus new 'in_credits' info if Plex integration is enabled.
         """
+        plex_enabled = self._entry.data.get("plex_enabled")
+        plex_token = self._entry.data.get("plex_token")
+        plex_base_url = self._entry.data.get("plex_base_url")
+
         sessions = self.coordinator.data.get("sessions", [])
         if len(sessions) <= self._index:
             return {}
@@ -385,16 +391,10 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
         attributes["video_resolution"] = session.get("video_resolution")
         attributes["stream_video_resolution"] = session.get("stream_video_resolution")
         attributes["transcode_decision"] = session.get("transcode_decision")
-
-        # Always include paused duration
         attributes["stream_paused_duration"] = self._paused_duration_str
 
         # If advanced is off, return now
         if not advanced:
-            # still add 'in_credits' below, even if advanced is off
-            attributes["in_credits"] = self._in_credits
-            if self._credits_start_time:
-                attributes["credits_start_time"] = self._credits_start_time
             return attributes
 
         # Advanced is ON, so add more
@@ -479,12 +479,42 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             "stream_audio_language_code": session.get("stream_audio_language_code"),
         })
 
-        # Always add credits info
-        attributes["in_credits"] = self._in_credits
-        if self._credits_start_time:
-            attributes["credits_start_time"] = self._credits_start_time
+        # ------------------------------------------------------
+        # 2) PLEX ATTRIBUTES (if plex_enabled == True)
+        # ------------------------------------------------------
+        if plex_enabled and plex_token and plex_base_url:
+            rating_key = session.get("rating_key")
+            if rating_key:
+                attributes["rating_key"] = session.get("rating_key")
+            summary = session.get("summary", "")
+            if summary:
+                attributes["summary"] = summary
+            contentRating = session.get("content_rating")
+            if contentRating:
+                attributes["content_rating"] = contentRating
+            audienceRating = session.get("audience_rating")
+            if audienceRating:
+                attributes["audience_rating"] = audienceRating
+            rating = session.get("rating")
+            if rating:
+                attributes["rating"] = rating
+            attributes["library_folder"] = session.get("library_section_title")
+            viewCount = session.get("view_count")
+            if viewCount:
+                attributes["view_count"] = viewCount
+            lastViewedAt = session.get("last_viewed_at")    
+            if lastViewedAt:
+                last_viewed_timestamp = int(lastViewedAt)
+                last_viewed_date = datetime.fromtimestamp(last_viewed_timestamp)
+                attributes["last_viewed_at"] = last_viewed_date.strftime("%Y-%m-%d %H:%M:%S")
+            attributes["in_credits"] = self._in_credits
+            if self._credits_start_time:
+                attributes["credits_start_time"] = self._credits_start_time
+
+
 
         return attributes
+
 
 
 class TautulliDiagnosticSensor(CoordinatorEntity, SensorEntity):
@@ -700,6 +730,10 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
                 )
             ):
                 dev_reg.async_remove_device(device_entry.id)
+
+    # Force a fresh Tautulli fetch (if your coordinator is sessions_coordinator):
+    sessions_coordinator = hass.data[DOMAIN][entry.entry_id]["sessions_coordinator"]
+    await sessions_coordinator.async_request_refresh()
 
     # Reload the config entry so the changes take effect
     await hass.config_entries.async_reload(entry.entry_id)
