@@ -26,7 +26,6 @@ from .const import (
     CONF_PLEX_ENABLED,
     CONF_PLEX_TOKEN,
     CONF_PLEX_BASEURL,
-    # Logging
     LOGGER,
 )
 from .api import TautulliAPI
@@ -46,7 +45,6 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """
         errors = {}
         if user_input is not None:
-            # parse/fix URL
             url = user_input[CONF_URL].strip()
             if not url.startswith(("http://", "https://")):
                 url = f"http://{url}"
@@ -59,10 +57,10 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 resp = await api.get_server_info()
                 if not isinstance(resp, dict) or "response" not in resp:
                     raise ValueError(f"Malformed API response: {resp}")
+
                 if resp["response"].get("result") != "success":
                     errors["base"] = "invalid_api_key"
                 else:
-                    # fill server name
                     server_name = user_input.get("server_name", "").strip()
                     if not server_name:
                         server_name = resp["response"]["data"].get("pms_name", "")
@@ -104,9 +102,9 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             session_interval = user_input.get(CONF_SESSION_INTERVAL, DEFAULT_SESSION_INTERVAL)
             num_sensors = user_input.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
-            image_proxy = user_input.get(CONF_IMAGE_PROXY, True)
-            geo = user_input.get(CONF_ENABLE_IP_GEOLOCATION, True)
-            adv_attrs = user_input.get(CONF_ADVANCED_ATTRIBUTES, True)
+            image_proxy = user_input.get(CONF_IMAGE_PROXY, False)
+            geo = user_input.get(CONF_ENABLE_IP_GEOLOCATION, False)
+            adv_attrs = user_input.get(CONF_ADVANCED_ATTRIBUTES, False)
             enable_stats = user_input.get(CONF_ENABLE_STATISTICS, False)
             stats_mtd = user_input.get(CONF_STATS_MONTH_TO_DATE, False)
             stats_interval = user_input.get(CONF_STATISTICS_INTERVAL, DEFAULT_STATISTICS_INTERVAL)
@@ -137,10 +135,10 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema = vol.Schema({
             vol.Required(CONF_SESSION_INTERVAL, default=DEFAULT_SESSION_INTERVAL): vol.All(int, vol.Range(min=1)),
             vol.Required(CONF_NUM_SENSORS, default=DEFAULT_NUM_SENSORS): vol.All(int, vol.Range(min=1)),
-            vol.Optional(CONF_IMAGE_PROXY, default=True): bool,
-            vol.Optional(CONF_ENABLE_IP_GEOLOCATION, default=True): bool,
+            vol.Optional(CONF_IMAGE_PROXY, default=False): bool,
+            vol.Optional(CONF_ENABLE_IP_GEOLOCATION, default=False): bool,
             vol.Optional("enable_plex_integration", default=False): bool,
-            vol.Optional(CONF_ADVANCED_ATTRIBUTES, default=True): bool,
+            vol.Optional(CONF_ADVANCED_ATTRIBUTES, default=False): bool,
             vol.Optional(CONF_ENABLE_STATISTICS, default=False): bool,
             vol.Optional(CONF_STATS_MONTH_TO_DATE, default=False): bool,
             vol.Optional(CONF_STATISTICS_DAYS, default=DEFAULT_STATISTICS_DAYS): vol.All(int, vol.Range(min=1)),
@@ -163,7 +161,6 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors[CONF_PLEX_TOKEN] = "invalid_plex_token"
 
             if not errors:
-                # store plex details
                 self._flow_data[CONF_PLEX_TOKEN] = plex_token
                 self._flow_data[CONF_PLEX_ENABLED] = True
 
@@ -199,6 +196,10 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_API_KEY: self._flow_data[CONF_API_KEY],
             CONF_VERIFY_SSL: self._flow_data[CONF_VERIFY_SSL],
             "server_name": self._flow_data.get("server_name", ""),
+            # Add Plex fields to data too
+            CONF_PLEX_ENABLED: self._flow_data[CONF_PLEX_ENABLED],
+            CONF_PLEX_TOKEN: self._flow_data[CONF_PLEX_TOKEN],
+            CONF_PLEX_BASEURL: self._flow_data[CONF_PLEX_BASEURL],
         }
 
         options = {
@@ -216,31 +217,19 @@ class TautulliConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_PLEX_BASEURL: self._flow_data[CONF_PLEX_BASEURL],
         }
 
-        # Create the entry and store the returned ConfigEntry object
-        new_entry = self.async_create_entry(
+        return self.async_create_entry(
             title=self._flow_data.get("server_name") or "Tautulli Active Streams",
             data=data,
             options=options,
         )
 
-        # Schedule an async task to reload after the flow finishes
-        if hasattr(new_entry, 'entry_id'):
-            self.hass.async_create_task(self._async_reload_later(new_entry.entry_id))
-        else:
-            LOGGER.warning("Could not schedule reload - no entry_id available")
-            
-        return new_entry
-
-    async def _async_reload_later(self, entry_id):
-        """Wait one event loop, then reload."""
-        await asyncio.sleep(0)  # or a small sleep(0.1)
-        await self.hass.config_entries.async_reload(entry_id)
 
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
         return TautulliOptionsFlowHandler(config_entry)
+
 
 class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
     """
@@ -324,12 +313,24 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_plex_setup(self, user_input=None):
         """If user toggles plex on, gather plex token/base. Then sync to data."""
+        errors = {}
         if user_input is not None:
-            self.options[CONF_PLEX_TOKEN] = user_input.get(CONF_PLEX_TOKEN, "")
-            self.options[CONF_PLEX_BASEURL] = user_input.get(CONF_PLEX_BASEURL, "")
-            self.options[CONF_PLEX_ENABLED] = True
-            self._update_config_entry_data()  # sync to data
-            return self.async_create_entry(title="", data=self.options)
+            plex_token = user_input.get(CONF_PLEX_TOKEN, "").strip()
+            # Validate token before saving
+            if not plex_token:
+                errors[CONF_PLEX_TOKEN] = "plex_token_required"
+            elif len(plex_token) < 20:
+                errors[CONF_PLEX_TOKEN] = "invalid_plex_token"
+                
+            if not errors:
+                self.options[CONF_PLEX_TOKEN] = plex_token
+                plex_base = user_input.get(CONF_PLEX_BASEURL, "").strip()
+                self.options[CONF_PLEX_BASEURL] = plex_base
+                self.options[CONF_PLEX_ENABLED] = True
+                
+                # Sync to config entry data before creating entry
+                self._update_config_entry_data()
+                return self.async_create_entry(title="", data=self.options)
 
         fallback_token = self.options.get(CONF_PLEX_TOKEN, "")
         fallback_baseurl = self.options.get(CONF_PLEX_BASEURL, "")
@@ -337,7 +338,11 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Required(CONF_PLEX_TOKEN, default=fallback_token): str,
             vol.Optional(CONF_PLEX_BASEURL, default=fallback_baseurl): str,
         })
-        return self.async_show_form(step_id="plex_setup", data_schema=plex_schema)
+        return self.async_show_form(
+            step_id="plex_setup",
+            data_schema=plex_schema,
+            errors=errors
+        )
 
     def _update_config_entry_data(self):
         """
@@ -352,7 +357,6 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
         new_data[CONF_PLEX_TOKEN] = self.options.get(CONF_PLEX_TOKEN, "")
         new_data[CONF_PLEX_BASEURL] = self.options.get(CONF_PLEX_BASEURL, "")
 
-        # Save the updated data back
         self.hass.config_entries.async_update_entry(
             self.config_entry,
             data=new_data,

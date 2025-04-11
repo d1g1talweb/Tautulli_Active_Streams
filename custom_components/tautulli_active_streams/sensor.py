@@ -20,8 +20,8 @@ from .const import (
     CONF_NUM_SENSORS,
     CONF_ENABLE_STATISTICS,
     CONF_IMAGE_PROXY,
-    CONF_ADVANCED_ATTRIBUTES  # make sure these are imported,
-)
+    CONF_ADVANCED_ATTRIBUTES
+    )
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,17 +94,15 @@ async def _fetch_plex_credits(plex_base_url, plex_token, rating_key):
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    """
-    Set up the Tautulli stream sensors, diagnostic sensors, and user stats sensors
-    using two different coordinators:
-      - sessions_coordinator for sessions/diagnostics
-      - history_coordinator for user-based stats
-    """
-
-    # Retrieve both coordinators
+    """Set up the Tautulli sensors."""
+    # Force a refresh to ensure we have latest data
     data = hass.data[DOMAIN][entry.entry_id]
     sessions_coordinator = data["sessions_coordinator"]
     history_coordinator = data["history_coordinator"]
+
+    # Force a fetch so the sensors see the final plex fields
+    await sessions_coordinator.async_request_refresh()
+    await history_coordinator.async_request_refresh()
 
     # Number of active stream sensors to create
     num_sensors = entry.options.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
@@ -486,6 +484,48 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             rating_key = session.get("rating_key")
             if rating_key:
                 attributes["rating_key"] = session.get("rating_key")
+
+
+
+            studio = session.get("studio")
+            if studio:
+                attributes["studio"] = studio
+
+            # Add Country
+            country = session.get("country")
+            if country:
+                attributes["country"] = country
+
+            # Genre, Director, Writer, Role
+            genres = session.get("Genre", [])
+            if isinstance(genres, list):
+                attributes["genres"] = [g.get("tag") for g in genres]
+            elif isinstance(genres, dict):
+                attributes["genres"] = [genres.get("tag")]
+
+            directors = session.get("Director", [])
+            if isinstance(directors, list):
+                attributes["directors"] = [d.get("tag") for d in directors]
+            elif isinstance(directors, dict):
+                attributes["directors"] = [directors.get("tag")]
+
+            writers = session.get("Writer", [])
+            if isinstance(writers, list):
+                attributes["writers"] = [w.get("tag") for w in writers]
+            elif isinstance(writers, dict):
+                attributes["writers"] = [writers.get("tag")]
+
+            # Add cast (Role)
+            roles = session.get("Role", [])
+            if isinstance(roles, list):
+                attributes["cast"] = [{"actor": r.get("tag"), "role": r.get("role")} for r in roles]
+            elif isinstance(roles, dict):
+                attributes["cast"] = [{"actor": roles.get("tag"), "role": roles.get("role")}]
+
+            # Tagline & Studio
+            tagline = session.get("tagline")
+            if tagline:
+                attributes["tagline"] = tagline
             summary = session.get("summary", "")
             if summary:
                 attributes["summary"] = summary
@@ -498,20 +538,89 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             rating = session.get("rating")
             if rating:
                 attributes["rating"] = rating
-            attributes["library_folder"] = session.get("library_section_title")
-            viewCount = session.get("view_count")
-            if viewCount:
-                attributes["view_count"] = viewCount
-            lastViewedAt = session.get("last_viewed_at")    
+
+
+
+
+            # External IDs
+            guids = []
+            for guid in session.get("Guid", []):
+                guid_id = guid.get("id")
+                if guid_id:
+                    guids.append(guid_id)
+            if guids:
+                attributes["guids"] = guids
+
+
+
+            libraryLocationPath = session.get("Part", {}).get("file")
+            if libraryLocationPath:
+                attributes["library_folder"] = libraryLocationPath
+
+            librarySectionTitle = session.get("librarySectionTitle")
+            if librarySectionTitle:
+                attributes["library_section_title"] = librarySectionTitle
+
+            librarySectionID = session.get("librarySectionID")
+            if librarySectionID:
+                attributes["library_section_id"] = librarySectionID
+
+            # External Ratings
+            for rating in session.get("Rating", []):
+                if rating.get("image") == "rottentomatoes://image.rating.ripe":
+                    attributes["rotten_tomatoes_rating"] = rating.get("value")
+                elif rating.get("image") == "rottentomatoes://image.rating.upright":
+                    attributes["rotten_tomatoes_audience_rating"] = rating.get("value")
+                elif rating.get("image") == "imdb://image.rating":
+                    attributes["imdb_rating"] = rating.get("value")
+
+            # Add ratings from different sources
+            rottenTomatoesCriticRating = session.get("ratingImage", {}).get("rottentomatoes://image.rating.ripe")
+            if rottenTomatoesCriticRating:
+                attributes["rotten_tomatoes_rating"] = rottenTomatoesCriticRating
+
+            rottenTomatoesAudienceRating = session.get("ratingImage", {}).get("rottentomatoes://image.rating.upright")
+            if rottenTomatoesAudienceRating:
+                attributes["rotten_tomatoes_audience_rating"] = rottenTomatoesAudienceRating
+
+            imdbRating = session.get("ratingImage", {}).get("imdb://image.rating")
+            if imdbRating:
+                attributes["imdb_rating"] = imdbRating
+
+
+            # Dates and Timestamps
+            originally_available = session.get("originallyAvailableAt")
+            if originally_available:
+                attributes["originally_available_at"] = originally_available
+
+
+            lastViewedAt = session.get("lastViewedAt")
             if lastViewedAt:
                 last_viewed_timestamp = int(lastViewedAt)
                 last_viewed_date = datetime.fromtimestamp(last_viewed_timestamp)
                 attributes["last_viewed_at"] = last_viewed_date.strftime("%Y-%m-%d %H:%M:%S")
+
+
+            viewCount = session.get("viewCount")
+            if viewCount:
+                attributes["view_count"] = viewCount
+
+            # Add timestamps
+            addedAt = session.get("addedAt")
+            if addedAt:
+                added_date = datetime.fromtimestamp(int(addedAt))
+                attributes["added_at"] = added_date.strftime("%Y-%m-%d %H:%M:%S")
+
+            updatedAt = session.get("updatedAt")
+            if updatedAt:
+                updated_date = datetime.fromtimestamp(int(updatedAt))
+                attributes["updated_at"] = updated_date.strftime("%Y-%m-%d %H:%M:%S")
+
+
+
             attributes["in_credits"] = self._in_credits
             if self._credits_start_time:
                 attributes["credits_start_time"] = self._credits_start_time
-
-
 
         return attributes
 

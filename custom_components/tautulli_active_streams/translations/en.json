@@ -35,6 +35,10 @@
           "plex_base_url": "Plex base URL"
         }
       }
+    },
+    "error": {
+      "plex_token_required": "Plex token is required",
+      "invalid_plex_token": "Invalid Plex token format"
     }
   },
   "options": {
