@@ -34,16 +34,10 @@ def format_seconds_to_min_sec(total_seconds: float) -> str:
     return f"{minutes}m {secs}s"
 
 
-async def _fetch_plex_credits(plex_base_url, plex_token, rating_key):
+async def _fetch_plex_metadata(plex_base_url, plex_token, rating_key):
     """
-    Query Plex for chapters & markers by hitting:
-      {plex_base_url}/library/metadata/{rating_key}?includeChapters=1&includeMarkers=1&X-Plex-Token={plex_token}
-
-    We parse the returned XML for either:
-      <Marker type="credits" startTimeOffset="..." />
-    or
-      <Chapter tag="...Credits..." startTimeOffset="..." />
-    If found, we return the startTimeOffset (ms). Otherwise None.
+    Query Plex for metadata including chapters, markers, and other attributes.
+    Returns a tuple of (credits_offset, metadata_dict).
     """
     url = (
         f"{plex_base_url}/library/metadata/{rating_key}"
@@ -58,39 +52,136 @@ async def _fetch_plex_credits(plex_base_url, plex_token, rating_key):
                         "Failed to fetch XML for rating_key=%s: status=%s, reason=%s",
                         rating_key, resp.status, resp.reason
                     )
-                    return None
+                    return None, {}
 
-                # Retrieve the full XML text
+                # Parse XML
                 xml_body = await resp.text()
-
-                # Parse XML with ElementTree
-                root = ET.fromstring(xml_body)  # <MediaContainer ...>
-
-                # Usually <Video> is the first child
-                video_el = root.find("Video")
+                root = ET.fromstring(xml_body)
+                
+                # Check various XML paths for metadata
+                mediacontainer = root.find("MediaContainer")
+                video_el = root.find(".//Video")
+                collection = root.find(".//Collection") 
+                director = root.find(".//Director")
+                writer = root.find(".//Writer")
+                producer = root.find(".//Producer")
+                role = root.find(".//Role")
+                
+                # If no Video element found, return empty results
                 if video_el is None:
-                    return None
+                    return None, {}
 
-                summary_text = video_el.attrib.get("summary", "")
 
-                # 1) Check <Marker type="credits">
-                markers = video_el.findall("Marker")
-                for marker in markers:
-                    mtype = marker.attrib.get("type", "")
-                    if mtype == "credits":
-                        return int(marker.attrib.get("startTimeOffset", 0))
+                # Initialize metadata dict
+                metadata = {}
 
-                # 2) Otherwise check <Chapter> with "credit" in the 'tag'
-                chapters = video_el.findall("Chapter")
-                for ch in chapters:
-                    ch_tag = ch.attrib.get("tag", "").lower()
-                    if "credit" in ch_tag:
-                        return int(ch.attrib.get("startTimeOffset", 0))
+                # 1) Credits offset from markers/chapters
+                credits_offset = None
+                for marker in video_el.findall("Marker"):
+                    if marker.attrib.get("type") == "credits":
+                        credits_offset = int(marker.attrib.get("startTimeOffset", 0))
+                        break
+
+                if not credits_offset:
+                    for chapter in video_el.findall("Chapter"):
+                        if "credit" in chapter.attrib.get("tag", "").lower():
+                            credits_offset = int(chapter.attrib.get("startTimeOffset", 0))
+                            break
+
+                # 2) Parse Director tags
+                directors = []
+                for director in video_el.findall(".//Director"):
+                    if "tag" in director.attrib:
+                        directors.append(director.attrib["tag"])
+                if directors:
+                    metadata["directors"] = directors
+
+                # 3) Parse Role/Cast tags
+                cast = []
+                for role in video_el.findall(".//Role"):
+                    cast_entry = {
+                        "actor": role.attrib.get("tag"),
+                        "role": role.attrib.get("role")
+                    }
+                    cast.append(cast_entry)
+                if cast:
+                    metadata["cast"] = cast
+
+                # 4) Parse Genre tags
+                genres = []
+                for genre in video_el.findall(".//Genre"):
+                    if "tag" in genre.attrib:
+                        genres.append(genre.attrib["tag"])
+                if genres:
+                    metadata["genres"] = genres
+
+                # 5) Parse Writer tags
+                writers = []
+                for writer in video_el.findall(".//Writer"):
+                    if "tag" in writer.attrib:
+                        writers.append(writer.attrib["tag"])
+                if writers:
+                    metadata["writers"] = writers
+
+                # 6) Parse Country tags
+                countries = []
+                for country in video_el.findall(".//Country"):
+                    if "tag" in country.attrib:
+                        countries.append(country.attrib["tag"])
+                if countries:
+                    metadata["country"] = countries[0]  # Take first country
+
+                # 7) Parse Guid tags for external IDs
+                guids = []
+                for guid in video_el.findall(".//Guid"):
+                    if "id" in guid.attrib:
+                        guids.append(guid.attrib["id"])
+                if guids:
+                    metadata["guids"] = guids
+
+                # 8) Get Media/Part info for file location
+                media = video_el.find(".//Media")
+                if media is not None:
+                    part = media.find("Part")
+                    if part is not None and "file" in part.attrib:
+                        metadata["library_folder"] = part.attrib["file"]
+
+                # 9) Get library section info from parent container
+                library = root.find("LibrarySection")
+                if library is not None:
+                    if "title" in library.attrib:
+                        metadata["library_section_title"] = library.attrib["title"]
+                    if "id" in library.attrib:
+                        metadata["library_section_id"] = library.attrib["id"]
+
+                # 10) Parse Rating tags
+                for rating in video_el.findall(".//Rating"):
+                    image = rating.attrib.get("image", "")
+                    value = rating.attrib.get("value")
+                    if value:
+                        if "rottentomatoes://image.rating.ripe" in image:
+                            metadata["rotten_tomatoes_rating"] = value
+                        elif "rottentomatoes://image.rating.upright" in image:
+                            metadata["rotten_tomatoes_audience_rating"] = value
+                        elif "imdb://image.rating" in image:
+                            metadata["imdb_rating"] = value
+
+                # 11) Get basic metadata from Video attributes
+                basic_fields = [
+                    "title", "summary", "year", "rating", "studio",
+                    "tagline", "contentRating", "originallyAvailableAt",
+                    "audienceRating", "viewCount", "addedAt", "updatedAt",
+                    "lastViewedAt"
+                ]
+                for field in basic_fields:
+                    if field in video_el.attrib:
+                        metadata[field] = video_el.attrib[field]
+
+                return credits_offset, metadata
 
     except Exception as err:
-        _LOGGER.warning("Error fetching Plex credits for rating_key=%s: %s", rating_key, err)
-
-    return None
+        _LOGGER.warning("Error fetching Plex metadata for rating_key=%s: %s", rating_key, err)
+        return None, {}
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -179,6 +270,11 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
         self._credits_start_time = None  # e.g. "1m 23s"
         self._in_credits = False
 
+        # Add new tracking variables
+        self._last_state = STATE_OFF
+        self._last_rating_key = None
+        self._metadata_fetched = False
+
     @property
     def device_info(self):
         return {
@@ -209,18 +305,101 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
         await super().async_will_remove_from_hass()
 
     async def _update_every_second(self, now):
-        """
-        Called every second. Update paused duration and
-        check for credits if Plex is enabled.
-        """
+        """Called every second to update pause duration and credits only."""
         # 1) Update local paused-time tracking
         self._update_pause_duration()
 
-        # 2) Update Plex credits logic
-        await self._update_plex_credits()
+        # 2) Check if we need to fetch metadata
+        current_state = self.state
+        sessions = self.coordinator.data.get("sessions", [])
+        
+        if len(sessions) > self._index:
+            session = sessions[self._index]
+            current_rating_key = session.get("rating_key")
+            
+            # Fetch metadata if:
+            # - State changed from OFF to anything else
+            # - Rating key changed (different content)
+            # - Metadata hasn't been fetched yet
+            if (self._last_state == STATE_OFF and current_state != STATE_OFF) or \
+               (current_rating_key and current_rating_key != self._last_rating_key) or \
+               (not self._metadata_fetched and current_state != STATE_OFF):
+                await self._fetch_full_metadata()
+            
+            # Always update credits detection
+            await self._update_credits_only()
+            
+            # Update tracking variables
+            self._last_state = current_state
+            self._last_rating_key = current_rating_key
+        else:
+            self._last_state = STATE_OFF
+            self._last_rating_key = None
+            self._metadata_fetched = False
+            self._credits_start_time = None
+            self._in_credits = False
 
         # Finally, write new state attributes
         self.async_write_ha_state()
+
+    async def _fetch_full_metadata(self):
+        """Fetch full metadata from Plex when needed."""
+        plex_enabled = self._entry.data.get("plex_enabled")
+        plex_token = self._entry.data.get("plex_token")
+        plex_base_url = self._entry.data.get("plex_base_url")
+
+        if not all([plex_enabled, plex_token, plex_base_url]):
+            return
+
+        sessions = self.coordinator.data.get("sessions", [])
+        if len(sessions) <= self._index:
+            return
+
+        session = sessions[self._index]
+        rating_key = session.get("rating_key")
+        if not rating_key:
+            return
+
+        try:
+            credits_offset, metadata = await _fetch_plex_metadata(
+                plex_base_url, plex_token, rating_key
+            )
+            
+            # Store credits offset for future checks
+            if credits_offset:
+                minutes = credits_offset // 60000
+                seconds = (credits_offset % 60000) // 1000
+                self._credits_start_time = f"{minutes}m {seconds}s"
+            else:
+                self._credits_start_time = None
+
+            # Update session metadata in coordinator
+            if metadata and "sessions" in self.coordinator.data:
+                self.coordinator.data["sessions"][self._index].update(metadata)
+                self._metadata_fetched = True
+
+        except Exception as err:
+            _LOGGER.warning("Error fetching full metadata: %s", err)
+
+    async def _update_credits_only(self):
+        """Only check credits position, no full metadata fetch."""
+        if not self._credits_start_time:
+            return
+
+        session = self.coordinator.data["sessions"][self._index]
+        view_offset_str = session.get("view_offset")
+        
+        try:
+            view_offset = int(view_offset_str)
+            credits_ms = sum(
+                x * y for x, y in zip(
+                    map(int, self._credits_start_time.replace('m','').replace('s','').split()),
+                    (60000, 1000)
+                )
+            )
+            self._in_credits = (view_offset >= credits_ms)
+        except (ValueError, TypeError):
+            self._in_credits = False
 
     def _update_pause_duration(self):
         """
@@ -238,62 +417,6 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
             self._paused_start = None
             self._paused_duration_sec = 0
             self._paused_duration_str = "0m 0s"
-
-    ### NOTE: THIS METHOD IS NOW INDENTED INSIDE THE CLASS
-    async def _update_plex_credits(self):
-        """
-        Check if user enabled Plex integration, fetch chapters, determine if credits are active.
-        """
-        plex_enabled = self._entry.data.get("plex_enabled")
-        plex_token = self._entry.data.get("plex_token")
-        plex_base_url = self._entry.data.get("plex_base_url")
-
-        if not plex_enabled or not plex_token or not plex_base_url:
-            # if user didn't enable or token is missing, skip
-            self._credits_start_time = None
-            self._in_credits = False
-            return
-
-        sessions = self.coordinator.data.get("sessions", [])
-        if len(sessions) <= self._index:
-            self._credits_start_time = None
-            self._in_credits = False
-            return
-
-        session = sessions[self._index]
-        rating_key = session.get("rating_key")
-
-        # view_offset is a string from Tautulli, parse it as int
-        view_offset_str = session.get("view_offset")
-        if not rating_key or not view_offset_str:
-            # skip if no rating_key or no offset
-            self._credits_start_time = None
-            self._in_credits = False
-            return
-
-        try:
-            view_offset = int(view_offset_str)
-        except ValueError:
-            _LOGGER.warning("Could not parse view_offset=%s for rating_key=%s", view_offset_str, rating_key)
-            self._credits_start_time = None
-            self._in_credits = False
-            return
-
-        # fetch chapter data
-        start_ms = await _fetch_plex_credits(plex_base_url, plex_token, rating_key)
-        if start_ms:
-            # are we >= credit start?
-            self._in_credits = (view_offset >= start_ms)
-
-            # store a user-readable time
-            minutes = start_ms // 60000
-            seconds = (start_ms % 60000) // 1000
-            self._credits_start_time = f"{minutes}m {seconds}s"
-        else:
-            # no credits info found
-            self._credits_start_time = None
-            self._in_credits = False
-    ### END OF THE METHOD
 
     @property
     def state(self):
@@ -392,232 +515,243 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
         attributes["stream_paused_duration"] = self._paused_duration_str
 
         # If advanced is off, return now
-        if not advanced:
-            return attributes
+        if advanced:
 
-        # Advanced is ON, so add more
-        if session.get("stream_duration"):
-            total_ms = float(session["stream_duration"])
-            hours = int(total_ms // 3600000)
-            minutes = int((total_ms % 3600000) // 60000)
-            seconds = int((total_ms % 60000) // 1000)
-            formatted_duration = f"{hours}:{minutes:02d}:{seconds:02d}"
-        else:
-            formatted_duration = None
+            # Advanced is ON, so add more
+            if session.get("stream_duration"):
+                total_ms = float(session["stream_duration"])
+                hours = int(total_ms // 3600000)
+                minutes = int((total_ms % 3600000) // 60000)
+                seconds = int((total_ms % 60000) // 1000)
+                formatted_duration = f"{hours}:{minutes:02d}:{seconds:02d}"
+            else:
+                formatted_duration = None
 
-        if session.get("view_offset") and session.get("stream_duration"):
-            remain_ms = float(session["stream_duration"]) - float(session["view_offset"])
-            remain_seconds = remain_ms / 1000
-            remain_hours = int(remain_seconds // 3600)
-            remain_minutes = int((remain_seconds % 3600) // 60)
-            remain_secs = int(remain_seconds % 60)
-            formatted_remaining = f"{remain_hours}:{remain_minutes:02d}:{remain_secs:02d}"
+            if session.get("view_offset") and session.get("stream_duration"):
+                remain_ms = float(session["stream_duration"]) - float(session["view_offset"])
+                remain_seconds = remain_ms / 1000
+                remain_hours = int(remain_seconds // 3600)
+                remain_minutes = int((remain_seconds % 3600) // 60)
+                remain_secs = int(remain_seconds % 60)
+                formatted_remaining = f"{remain_hours}:{remain_minutes:02d}:{remain_secs:02d}"
 
-            eta = datetime.now() + timedelta(seconds=remain_seconds)
-            hour_12 = eta.strftime("%I").lstrip("0") or "12"
-            minute = eta.strftime("%M")
-            ampm = eta.strftime("%p").lower()
-            formatted_eta = f"{hour_12}:{minute} {ampm}"
-        else:
-            formatted_remaining = None
-            formatted_eta = None
+                eta = datetime.now() + timedelta(seconds=remain_seconds)
+                hour_12 = eta.strftime("%I").lstrip("0") or "12"
+                minute = eta.strftime("%M")
+                ampm = eta.strftime("%p").lower()
+                formatted_eta = f"{hour_12}:{minute} {ampm}"
+            else:
+                formatted_remaining = None
+                formatted_eta = None
 
-        attributes.update({
-            "user_friendly_name": session.get("friendly_name"),
-            "username": session.get("username"),
-            "user_thumb": session.get("user_thumb"),
-            "session_id": session.get("session_id"),
-            "library_name": session.get("library_name"),
-            "grandparent_title": session.get("grandparent_title"),
-            "title": session.get("title"),
-            "container": session.get("container"),
-            "aspect_ratio": session.get("aspect_ratio"),
-            "video_codec": session.get("video_codec"),
-            "video_framerate": session.get("video_framerate"),
-            "video_profile": session.get("video_profile"),
-            "video_dovi_profile": session.get("video_dovi_profile"),
-            "video_dynamic_range": session.get("video_dynamic_range"),
-            "video_color_space": session.get("video_color_space"),
-            "audio_codec": session.get("audio_codec"),
-            "audio_channels": session.get("audio_channels"),
-            "audio_channel_layout": session.get("audio_channel_layout"),
-            "audio_profile": session.get("audio_profile"),
-            "audio_bitrate": session.get("audio_bitrate"),
-            "audio_language": session.get("audio_language"),
-            "audio_language_code": session.get("audio_language_code"),
-            "subtitle_language": session.get("subtitle_language"),
-            "container_decision": session.get("stream_container_decision"),
-            "audio_decision": session.get("audio_decision"),
-            "video_decision": session.get("video_decision"),
-            "subtitle_decision": session.get("subtitle_decision"),
-            "transcode_container": session.get("transcode_container"),
-            "transcode_audio_codec": session.get("transcode_audio_codec"),
-            "transcode_video_codec": session.get("transcode_video_codec"),
-            "transcode_throttled": session.get("transcode_throttled"),
-            "transcode_progress": session.get("transcode_progress"),
-            "transcode_speed": session.get("transcode_speed"),
-            "stream_start_time": session.get("start_time"),
-            "stream_duration": formatted_duration,
-            "stream_remaining": formatted_remaining,
-            "stream_eta": formatted_eta,
-            "stream_video_resolution": session.get("stream_video_resolution"),
-            "stream_container": session.get("stream_container"),
-            "stream_bitrate": session.get("stream_bitrate"),
-            "stream_video_bitrate": session.get("stream_video_bitrate"),
-            "stream_video_codec": session.get("stream_video_codec"),
-            "stream_video_framerate": session.get("stream_video_framerate"),
-            "stream_video_full_resolution": session.get("stream_video_full_resolution"),
-            "stream_video_dovi_profile": session.get("stream_video_dovi_profile"),
-            "stream_video_decision": session.get("stream_video_decision"),
-            "stream_audio_bitrate": session.get("stream_audio_bitrate"),
-            "stream_audio_codec": session.get("stream_audio_codec"),
-            "stream_audio_channels": session.get("stream_audio_channels"),
-            "stream_audio_channel_layout": session.get("stream_audio_channel_layout"),
-            "stream_audio_language": session.get("stream_audio_language"),
-            "stream_audio_language_code": session.get("stream_audio_language_code"),
-        })
+            attributes.update({
+                "user_friendly_name": session.get("friendly_name"),
+                "username": session.get("username"),
+                "user_thumb": session.get("user_thumb"),
+                "session_id": session.get("session_id"),
+                "library_name": session.get("library_name"),
+                "grandparent_title": session.get("grandparent_title"),
+                "title": session.get("title"),
+                "container": session.get("container"),
+                "aspect_ratio": session.get("aspect_ratio"),
+                "video_codec": session.get("video_codec"),
+                "video_framerate": session.get("video_framerate"),
+                "video_profile": session.get("video_profile"),
+                "video_dovi_profile": session.get("video_dovi_profile"),
+                "video_dynamic_range": session.get("video_dynamic_range"),
+                "video_color_space": session.get("video_color_space"),
+                "audio_codec": session.get("audio_codec"),
+                "audio_channels": session.get("audio_channels"),
+                "audio_channel_layout": session.get("audio_channel_layout"),
+                "audio_profile": session.get("audio_profile"),
+                "audio_bitrate": session.get("audio_bitrate"),
+                "audio_language": session.get("audio_language"),
+                "audio_language_code": session.get("audio_language_code"),
+                "subtitle_language": session.get("subtitle_language"),
+                "container_decision": session.get("stream_container_decision"),
+                "audio_decision": session.get("audio_decision"),
+                "video_decision": session.get("video_decision"),
+                "subtitle_decision": session.get("subtitle_decision"),
+                "transcode_container": session.get("transcode_container"),
+                "transcode_audio_codec": session.get("transcode_audio_codec"),
+                "transcode_video_codec": session.get("transcode_video_codec"),
+                "transcode_throttled": session.get("transcode_throttled"),
+                "transcode_progress": session.get("transcode_progress"),
+                "transcode_speed": session.get("transcode_speed"),
+                "stream_start_time": session.get("start_time"),
+                "stream_duration": formatted_duration,
+                "stream_remaining": formatted_remaining,
+                "stream_eta": formatted_eta,
+                "stream_video_resolution": session.get("stream_video_resolution"),
+                "stream_container": session.get("stream_container"),
+                "stream_bitrate": session.get("stream_bitrate"),
+                "stream_video_bitrate": session.get("stream_video_bitrate"),
+                "stream_video_codec": session.get("stream_video_codec"),
+                "stream_video_framerate": session.get("stream_video_framerate"),
+                "stream_video_full_resolution": session.get("stream_video_full_resolution"),
+                "stream_video_dovi_profile": session.get("stream_video_dovi_profile"),
+                "stream_video_decision": session.get("stream_video_decision"),
+                "stream_audio_bitrate": session.get("stream_audio_bitrate"),
+                "stream_audio_codec": session.get("stream_audio_codec"),
+                "stream_audio_channels": session.get("stream_audio_channels"),
+                "stream_audio_channel_layout": session.get("stream_audio_channel_layout"),
+                "stream_audio_language": session.get("stream_audio_language"),
+                "stream_audio_language_code": session.get("stream_audio_language_code"),
+            })
 
         # ------------------------------------------------------
-        # 2) PLEX ATTRIBUTES (if plex_enabled == True)
+        # PLEX ATTRIBUTES (if plex_enabled == True)
         # ------------------------------------------------------
         if plex_enabled and plex_token and plex_base_url:
-            rating_key = session.get("rating_key")
-            if rating_key:
-                attributes["rating_key"] = session.get("rating_key")
+            # Directors
+            directors = []
+            if isinstance(session.get("directors"), list):
+                directors.extend(session["directors"])
+            elif isinstance(session.get("Director"), list):
+                directors.extend([d.get("tag") for d in session["Director"]])
+            elif isinstance(session.get("Director"), dict):
+                directors.append(session["Director"].get("tag"))
+            if directors:
+                attributes["directors"] = directors
 
+            # Cast/Roles
+            cast = []
+            if isinstance(session.get("cast"), list):
+                cast.extend(session["cast"])
+            elif isinstance(session.get("Role"), list):
+                cast.extend([{"actor": r.get("tag"), "role": r.get("role")} for r in session["Role"]])
+            elif isinstance(session.get("Role"), dict):
+                cast.append({"actor": session["Role"].get("tag"), "role": session["Role"].get("role")})
+            if cast:
+                attributes["cast"] = cast
 
+            # Writers
+            writers = []
+            if isinstance(session.get("writers"), list):
+                writers.extend(session["writers"])
+            elif isinstance(session.get("Writer"), list):
+                writers.extend([w.get("tag") for w in session["Writer"]])
+            elif isinstance(session.get("Writer"), dict):
+                writers.append(session["Writer"].get("tag"))
+            if writers:
+                attributes["writers"] = writers
 
-            studio = session.get("studio")
-            if studio:
-                attributes["studio"] = studio
+            # Genres
+            genres = []
+            if isinstance(session.get("genres"), list):
+                genres.extend(session["genres"])
+            elif isinstance(session.get("Genre"), list):
+                genres.extend([g.get("tag") for g in session["Genre"]])
+            elif isinstance(session.get("Genre"), dict):
+                genres.append(session["Genre"].get("tag"))
+            if genres:
+                attributes["genres"] = genres
 
-            # Add Country
-            country = session.get("country")
+            # Country
+            country = session.get("country") or (
+                session.get("Country", {}).get("tag") if isinstance(session.get("Country"), dict) else None
+            )
             if country:
                 attributes["country"] = country
 
-            # Genre, Director, Writer, Role
-            genres = session.get("Genre", [])
-            if isinstance(genres, list):
-                attributes["genres"] = [g.get("tag") for g in genres]
-            elif isinstance(genres, dict):
-                attributes["genres"] = [genres.get("tag")]
-
-            directors = session.get("Director", [])
-            if isinstance(directors, list):
-                attributes["directors"] = [d.get("tag") for d in directors]
-            elif isinstance(directors, dict):
-                attributes["directors"] = [directors.get("tag")]
-
-            writers = session.get("Writer", [])
-            if isinstance(writers, list):
-                attributes["writers"] = [w.get("tag") for w in writers]
-            elif isinstance(writers, dict):
-                attributes["writers"] = [writers.get("tag")]
-
-            # Add cast (Role)
-            roles = session.get("Role", [])
-            if isinstance(roles, list):
-                attributes["cast"] = [{"actor": r.get("tag"), "role": r.get("role")} for r in roles]
-            elif isinstance(roles, dict):
-                attributes["cast"] = [{"actor": roles.get("tag"), "role": roles.get("role")}]
-
-            # Tagline & Studio
-            tagline = session.get("tagline")
-            if tagline:
-                attributes["tagline"] = tagline
-            summary = session.get("summary", "")
-            if summary:
-                attributes["summary"] = summary
-            contentRating = session.get("content_rating")
-            if contentRating:
-                attributes["content_rating"] = contentRating
-            audienceRating = session.get("audience_rating")
-            if audienceRating:
-                attributes["audience_rating"] = audienceRating
-            rating = session.get("rating")
-            if rating:
-                attributes["rating"] = rating
-
-
-
-
-            # External IDs
+            # External IDs (GUIDs)
             guids = []
-            for guid in session.get("Guid", []):
-                guid_id = guid.get("id")
+            if isinstance(session.get("guids"), list):
+                guids.extend(session["guids"])
+            elif isinstance(session.get("Guid"), list):
+                guids.extend([g.get("id") for g in session["Guid"] if g.get("id")])
+            elif isinstance(session.get("Guid"), dict):
+                guid_id = session["Guid"].get("id")
                 if guid_id:
                     guids.append(guid_id)
             if guids:
                 attributes["guids"] = guids
 
+            # Library Info
+            library_folder = session.get("library_folder") or session.get("Part", {}).get("file")
+            if library_folder:
+                attributes["library_folder"] = library_folder
 
+            library_section_title = session.get("library_section_title") or session.get("librarySectionTitle")
+            if library_section_title:
+                attributes["library_section_title"] = library_section_title
 
-            libraryLocationPath = session.get("Part", {}).get("file")
-            if libraryLocationPath:
-                attributes["library_folder"] = libraryLocationPath
+            library_section_id = session.get("library_section_id") or session.get("librarySectionID")
+            if library_section_id:
+                attributes["library_section_id"] = library_section_id
 
-            librarySectionTitle = session.get("librarySectionTitle")
-            if librarySectionTitle:
-                attributes["library_section_title"] = librarySectionTitle
+            # Ratings
+            ratings_mapping = {
+                "rottentomatoes://image.rating.ripe": "rotten_tomatoes_rating",
+                "rottentomatoes://image.rating.upright": "rotten_tomatoes_audience_rating",
+                "imdb://image.rating": "imdb_rating"
+            }
 
-            librarySectionID = session.get("librarySectionID")
-            if librarySectionID:
-                attributes["library_section_id"] = librarySectionID
+            # Check both flattened and nested rating structures
+            for rating_type, attr_name in ratings_mapping.items():
+                rating_value = None
+                # Check flattened structure
+                if session.get(attr_name):
+                    rating_value = session[attr_name]
+                # Check nested Rating structure
+                elif isinstance(session.get("Rating"), list):
+                    for rating in session["Rating"]:
+                        if rating.get("image") == rating_type:
+                            rating_value = rating.get("value")
+                            break
+                if rating_value:
+                    attributes[attr_name] = rating_value
 
-            # External Ratings
-            for rating in session.get("Rating", []):
-                if rating.get("image") == "rottentomatoes://image.rating.ripe":
-                    attributes["rotten_tomatoes_rating"] = rating.get("value")
-                elif rating.get("image") == "rottentomatoes://image.rating.upright":
-                    attributes["rotten_tomatoes_audience_rating"] = rating.get("value")
-                elif rating.get("image") == "imdb://image.rating":
-                    attributes["imdb_rating"] = rating.get("value")
+            # Basic Metadata
+            basic_fields = {
+                "tagline": ["tagline"],
+                "summary": ["summary"],
+                "studio": ["studio"],
+                "content_rating": ["content_rating", "contentRating"],
+                "rating": ["rating"],
+                "audience_rating": ["audience_rating", "audienceRating"],
+                "originally_available_at": ["originally_available_at", "originallyAvailableAt"],
+                "rating_key": ["rating_key"],
+            }
 
-            # Add ratings from different sources
-            rottenTomatoesCriticRating = session.get("ratingImage", {}).get("rottentomatoes://image.rating.ripe")
-            if rottenTomatoesCriticRating:
-                attributes["rotten_tomatoes_rating"] = rottenTomatoesCriticRating
+            for attr_name, possible_keys in basic_fields.items():
+                for key in possible_keys:
+                    value = session.get(key)
+                    if value:
+                        attributes[attr_name] = value
+                        break
 
-            rottenTomatoesAudienceRating = session.get("ratingImage", {}).get("rottentomatoes://image.rating.upright")
-            if rottenTomatoesAudienceRating:
-                attributes["rotten_tomatoes_audience_rating"] = rottenTomatoesAudienceRating
+            # Timestamps
+            timestamp_fields = ["addedAt", "updatedAt", "lastViewedAt"]
+            for field in timestamp_fields:
+                try:
+                    timestamp = session.get(field)
+                    if timestamp is not None and timestamp != "":
+                        # Convert string to float if needed
+                        if isinstance(timestamp, str):
+                            timestamp = float(timestamp)
+                        elif not isinstance(timestamp, (int, float)):
+                            continue
+                        # Create datetime object and format
+                        try:
+                            date = datetime.fromtimestamp(timestamp)
+                            field_name = field[0].lower() + field[1:]  # camelCase to snake_case
+                            attributes[field_name] = date.strftime("%Y-%m-%d %H:%M:%S")
+                        except (ValueError, OSError) as err:
+                            _LOGGER.debug("Invalid timestamp value for %s=%s: %s", field, timestamp, err)
+                            
+                except (ValueError, TypeError) as err:
+                    _LOGGER.debug("Could not process timestamp field %s: %s", field, err)
 
-            imdbRating = session.get("ratingImage", {}).get("imdb://image.rating")
-            if imdbRating:
-                attributes["imdb_rating"] = imdbRating
+            # View Count
+            view_count = session.get("view_count") or session.get("viewCount")
+            if view_count is not None:
+                try:
+                    attributes["view_count"] = int(view_count)
+                except (ValueError, TypeError):
+                    _LOGGER.debug("Invalid view count value: %s", view_count)
 
-
-            # Dates and Timestamps
-            originally_available = session.get("originallyAvailableAt")
-            if originally_available:
-                attributes["originally_available_at"] = originally_available
-
-
-            lastViewedAt = session.get("lastViewedAt")
-            if lastViewedAt:
-                last_viewed_timestamp = int(lastViewedAt)
-                last_viewed_date = datetime.fromtimestamp(last_viewed_timestamp)
-                attributes["last_viewed_at"] = last_viewed_date.strftime("%Y-%m-%d %H:%M:%S")
-
-
-            viewCount = session.get("viewCount")
-            if viewCount:
-                attributes["view_count"] = viewCount
-
-            # Add timestamps
-            addedAt = session.get("addedAt")
-            if addedAt:
-                added_date = datetime.fromtimestamp(int(addedAt))
-                attributes["added_at"] = added_date.strftime("%Y-%m-%d %H:%M:%S")
-
-            updatedAt = session.get("updatedAt")
-            if updatedAt:
-                updated_date = datetime.fromtimestamp(int(updatedAt))
-                attributes["updated_at"] = updated_date.strftime("%Y-%m-%d %H:%M:%S")
-
-
-
+            # Credits Information
             attributes["in_credits"] = self._in_credits
             if self._credits_start_time:
                 attributes["credits_start_time"] = self._credits_start_time

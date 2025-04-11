@@ -30,7 +30,6 @@ CONF_PLEX_ENABLED = "plex_enabled"
 CONF_PLEX_TOKEN = "plex_token"
 CONF_PLEX_BASEURL = "plex_base_url"
 
-
 DEFAULT_VERIFY_SSL = False
 
 LOGGER = logging.getLogger(__package__)
