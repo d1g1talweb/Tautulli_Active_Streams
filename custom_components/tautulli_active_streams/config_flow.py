@@ -1,12 +1,12 @@
 import aiohttp
 import asyncio
 import voluptuous as vol
+from typing import Any, Dict  # Make sure Any is imported
 from homeassistant import config_entries
 from homeassistant.config_entries import FlowResult
 from homeassistant.const import CONF_API_KEY, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from typing import Any
 
 from .const import (
     DOMAIN,
