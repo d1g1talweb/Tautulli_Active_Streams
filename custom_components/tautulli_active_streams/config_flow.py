@@ -9,7 +9,6 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from typing import Any
 
 from .const import (
-    CONF_PLEX_METADATA,
     DOMAIN,
     # Basic Tautulli constants
     CONF_SESSION_INTERVAL,
