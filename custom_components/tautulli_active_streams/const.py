@@ -29,6 +29,7 @@ CONF_ENABLE_IP_GEOLOCATION = "enable_ip_geolocation"
 CONF_PLEX_ENABLED = "plex_enabled"
 CONF_PLEX_TOKEN = "plex_token"
 CONF_PLEX_BASEURL = "plex_base_url"
+CONF_PLEX_METADATA = "plex_metadata"
 
 DEFAULT_VERIFY_SSL = False
 

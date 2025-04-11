@@ -2,11 +2,14 @@ import aiohttp
 import asyncio
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.config_entries import FlowResult
 from homeassistant.const import CONF_API_KEY, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from typing import Any
 
 from .const import (
+    CONF_PLEX_METADATA,
     DOMAIN,
     # Basic Tautulli constants
     CONF_SESSION_INTERVAL,
