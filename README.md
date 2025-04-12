@@ -34,20 +34,20 @@ A custom integration for Home Assistant that allows you to monitor active Plex s
 
 If you enable **Plex Integration** and supply your **Plex Token** in the integration setup, you can take advantage of advanced session data:
 - **Enhanced Session Attributes**  
- * Directors  
- * Writers  
- * Genres  
- * External IDs (IMDB, TMDb, TVDb)  
- * Tagline  
- * Summary  
- * Studio  
- * Content Rating  
- * Rating  
- * Audience Rating  
- * Originally Available At  
- * Rating Key  
- * In Credits  
- * Credits Start Time  
+    * Directors  
+    * Writers  
+    * Genres  
+    * External IDs (IMDB, TMDb, TVDb)  
+    * Tagline  
+    * Summary  
+    * Studio  
+    * Content Rating  
+    * Rating  
+    * Audience Rating  
+    * Originally Available At  
+    * Rating Key  
+    * In Credits  
+    * Credits Start Time  
 
 
 ##  Statistics
