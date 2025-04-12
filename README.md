@@ -13,11 +13,12 @@
 <br>
 
 ## 📌 Features
-A custom integration for Home Assistant that allows you to monitor active Plex streams and User Statistics using Tautulli Api.
+A custom integration for Home Assistant that allows you to monitor active Plex streams and User Statistics using Tautulli Api.**Now integrated Plex Token** for even more attributes for your Plex sessions!
 <br>
 *Multi Tautulli Instances Supported!*
 
 ##  Active Streams
+
 - Dynamically creates session sensors based on active Plex streams.
 - Custom Sensor Count – Choose how many active streams to display.
 - Adjustable Scan Interval – Set how often HA updates stream data.
@@ -27,8 +28,30 @@ A custom integration for Home Assistant that allows you to monitor active Plex s
     * :earth_africa: **IP Address & Device**
     * :tv: **Playback Progress & Quality**
       * And so much more!
+
  
+## 🆕 Plex Extended Features & Attributes
+
+If you enable **Plex Integration** and supply your **Plex Token** in the integration setup, you can take advantage of advanced session data:
+- **Enhanced Session Attributes**  
+ * Directors  
+ * Writers  
+ * Genres  
+ * External IDs (IMDB, TMDb, TVDb)  
+ * Tagline  
+ * Summary  
+ * Studio  
+ * Content Rating  
+ * Rating  
+ * Audience Rating  
+ * Originally Available At  
+ * Rating Key  
+ * In Credits  
+ * Credits Start Time  
+
+
 ##  Statistics
+
 - Seperate Scan Interval  – Set how often HA updates Statistics data.
 - Fetch Range - Choose how far data should be fetched from default 30 days ago. 
 - Detailed User Attributes – Each user sensor provides:
@@ -39,6 +62,7 @@ A custom integration for Home Assistant that allows you to monitor active Plex s
     * **Transcode Percentage**
     * **Geo Location Data**
       * And so much more!
+
  
 --- 
 
@@ -128,11 +152,13 @@ These new features are designed to work seamlessly with automations and will bec
   * Go to **Settings → Devices & Services** and **Add** the integration.
   * Enter your **Tautulli details (URL, API Key)**, 
   * Set the Session Sensor Count and Refresh Interval.
-  * Option to use Image Proxy service.
-  * Option to use IP Geolocation?
-  * Option to use Advanced Attributes.
-  * Option to enable Statistics Service.
 
+  * (Optional) Enable:
+    - Image Proxy Service
+    - IP Geolocation
+    - Advanced Attributes
+    - Plex Integration
+    - Statistics Service
 ---
 
 # Don't forget to add the Card below.
