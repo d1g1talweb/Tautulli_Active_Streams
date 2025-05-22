@@ -240,7 +240,8 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
     """
 
     def __init__(self, config_entry: config_entries.ConfigEntry):
-        self.config_entry = config_entry
+        # Don't store config_entry directly to avoid deprecation warning
+        self.entry_id = config_entry.entry_id
         self.options = dict(config_entry.options)
         self._plex_enabled_old = self.options.get(CONF_PLEX_ENABLED, False)
 
@@ -338,20 +339,25 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
         fallback_baseurl = self.options.get(CONF_PLEX_BASEURL, "")
         plex_schema = vol.Schema({
             vol.Required(CONF_PLEX_TOKEN, default=fallback_token): str,
-            vol.Optional(CONF_PLEX_BASEURL, default=fallback_baseurl): str,
-        })
+            vol.Optional(CONF_PLEX_BASEURL, default=fallback_baseurl): str,        })
         return self.async_show_form(
             step_id="plex_setup",
             data_schema=plex_schema,
             errors=errors
         )
-
+        
     def _update_config_entry_data(self):
         """
         Sync the plex fields from self.options into config_entry.data
         so the sensor code can read them from entry.data.
         """
-        new_data = dict(self.config_entry.data)
+        # Get the current config entry from the hass instance using entry_id
+        config_entry = self.hass.config_entries.async_get_entry(self.entry_id)
+        if not config_entry:
+            LOGGER.error("Could not find config entry with id %s", self.entry_id)
+            return
+            
+        new_data = dict(config_entry.data)
 
         # Basic + server_name are mandatory; keep them as is
         # We only update the Plex fields + toggles
@@ -360,7 +366,7 @@ class TautulliOptionsFlowHandler(config_entries.OptionsFlow):
         new_data[CONF_PLEX_BASEURL] = self.options.get(CONF_PLEX_BASEURL, "")
 
         self.hass.config_entries.async_update_entry(
-            self.config_entry,
+            config_entry,
             data=new_data,
             options=self.options
         )
