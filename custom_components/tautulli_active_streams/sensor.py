@@ -550,6 +550,7 @@ class TautulliStreamSensor(CoordinatorEntity, SensorEntity):
                 "user_thumb": session.get("user_thumb"),
                 "session_id": session.get("session_id"),
                 "library_name": session.get("library_name"),
+                "channel_call_sign": session.get("channel_call_sign"),
                 "grandparent_title": session.get("grandparent_title"),
                 "title": session.get("title"),
                 "container": session.get("container"),
